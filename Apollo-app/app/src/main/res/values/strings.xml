@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AWAM</string>
+    <string name="title_activity_main">AWAM - Keamanan Digital</string>
+    <string name="btn_start_bubble">Aktifkan Floating Bubble AWAM</string>
+    <string name="permission_required_desc">AWAM membutuhkan izin "Tampilkan di Atas Aplikasi Lain" (System Alert Window) agar dapat memindai layar saat Anda menemukan aktivitas mencurigakan.</string>
+    <string name="awam_scan_header">AWAM Scan</string>
+    <string name="btn_share">Bagikan</string>
+    <string name="share_toast_message">Hasil verifikasi berhasil disalin ke papan klip!</string>
+    <string name="sources_header">Sumber Verifikasi:</string>
+</resources>

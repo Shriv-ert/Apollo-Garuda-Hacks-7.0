@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
             if (checkOverlayPermission()) {
                 startFloatingBubbleService()
             } else {
-                Toast.makeText(this, "Permission denied. Cannot start bubble.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Izin overlay ditolak. AWAM tidak dapat menampilkan gelembung.", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -63,6 +63,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        Toast.makeText(this, "Starting Floating Bubble...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Mengaktifkan AWAM Floating Bubble...", Toast.LENGTH_SHORT).show()
     }
 }

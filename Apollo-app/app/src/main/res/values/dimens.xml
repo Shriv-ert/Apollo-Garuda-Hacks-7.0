@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="bubble_main_size">56dp</dimen>
+    <dimen name="bubble_sub_size">44dp</dimen>
+    <dimen name="bubble_sub_margin_bottom">12dp</dimen>
+    <dimen name="panel_corner_radius">24dp</dimen>
+    <dimen name="panel_padding_horizontal">20dp</dimen>
+    <dimen name="card_corner_radius">12dp</dimen>
+    <dimen name="button_corner_radius">24dp</dimen>
+</resources>

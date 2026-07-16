@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Palet Warna AWAM -->
+    <color name="awam_main">#262D33</color>
+    <color name="awam_secondary">#E36954</color>
+    <color name="awam_surface">#FFFFFF</color>
+    <color name="awam_danger">#E63946</color>
+    <color name="awam_warning">#F4A261</color>
+    <color name="awam_safe">#2A9D8F</color>
+    <color name="awam_text_light">#A8DADC</color>
+    <color name="awam_card_bg">#1D3843</color>
+
+    <!-- Warna sistem dasar -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
