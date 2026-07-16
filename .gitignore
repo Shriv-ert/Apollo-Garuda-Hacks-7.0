@@ -1,0 +1,23 @@
+# Gradle files
+.gradle/
+build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Local configuration (machine-dependent)
+local.properties
+
+# Log files
+*.log
+
+# Built outputs
+*.apk
+*.aar
+*.aab
+
+# System files
+.DS_Store
