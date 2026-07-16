@@ -15,6 +15,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Pengecekan Login
+        val sharedPref = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+        val isLoggedIn = sharedPref.getBoolean("is_logged_in", false)
+        
+        if (!isLoggedIn) {
+            val intent = Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java)
+            startActivity(intent)
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_main)
 
         val btnStartBubble = findViewById<Button>(R.id.btnStartBubble)
@@ -24,6 +36,20 @@ class MainActivity : AppCompatActivity() {
             } else {
                 requestOverlayPermission()
             }
+        }
+
+        val btnLogout = findViewById<Button>(R.id.btnLogout)
+        btnLogout.setOnClickListener {
+            sharedPref.edit().putBoolean("is_logged_in", false).apply()
+            
+            // Hentikan service jika sedang berjalan
+            val serviceIntent = Intent(this, FloatingBubbleService::class.java)
+            stopService(serviceIntent)
+            
+            Toast.makeText(this, "Logout Berhasil", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java)
+            startActivity(intent)
+            finish()
         }
     }
 
