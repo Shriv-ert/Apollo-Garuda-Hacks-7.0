@@ -31,6 +31,7 @@ class BubbleView @JvmOverloads constructor(
     var onBubbleTouchDown: (() -> Unit)? = null
     var onBubbleDragged: ((totalDeltaX: Int, totalDeltaY: Int) -> Unit)? = null
     var onBubbleClicked: (() -> Unit)? = null
+    var onBubbleOutsideTouched: (() -> Unit)? = null
 
     init {
         setBackgroundResource(R.drawable.bg_bubble_main)
@@ -106,6 +107,10 @@ class BubbleView @JvmOverloads constructor(
                 if (totalDeltaX < touchSlop && totalDeltaY < touchSlop) {
                     onBubbleClicked?.invoke()
                 }
+                return true
+            }
+            MotionEvent.ACTION_OUTSIDE -> {
+                onBubbleOutsideTouched?.invoke()
                 return true
             }
         }

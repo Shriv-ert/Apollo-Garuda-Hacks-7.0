@@ -76,20 +76,30 @@ class SubMenuView(
 
     fun animateShow() {
         visibility = View.VISIBLE
-        val anim = AnimationUtils.loadAnimation(context, R.anim.bubble_sub_show)
-        startAnimation(anim)
+        alpha = 0f
+        scaleX = 0f
+        scaleY = 0f
+        
+        animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(250)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+            .start()
     }
 
     fun animateHide(onComplete: (() -> Unit)? = null) {
-        val anim = AnimationUtils.loadAnimation(context, R.anim.bubble_sub_hide)
-        anim.setAnimationListener(object : android.view.animation.Animation.AnimationListener {
-            override fun onAnimationStart(animation: android.view.animation.Animation?) {}
-            override fun onAnimationEnd(animation: android.view.animation.Animation?) {
+        animate()
+            .alpha(0f)
+            .scaleX(0f)
+            .scaleY(0f)
+            .setDuration(150)
+            .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+            .withEndAction {
                 visibility = View.GONE
                 onComplete?.invoke()
             }
-            override fun onAnimationRepeat(animation: android.view.animation.Animation?) {}
-        })
-        startAnimation(anim)
+            .start()
     }
 }
