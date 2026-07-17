@@ -80,7 +80,7 @@ class FloatingBubbleService : Service() {
             bubbleSize,
             bubbleSize,
             layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -96,15 +96,20 @@ class FloatingBubbleService : Service() {
             }
 
             onBubbleDragged = { totalDeltaX, totalDeltaY ->
-                if (currentState == BubbleState.IDLE || currentState == BubbleState.MENU_OPEN) {
-                    // Posisi baru = Posisi awal sentuhan + total geseran (1:1 akurat & fleksibel)
+                if (currentState != BubbleState.SCANNING && currentState != BubbleState.SHOW_RESULT) {
+                    // Posisi baru = Posisi awal sentuhan + total geseran
                     bubbleParams.x = initialBubbleX + totalDeltaX
                     bubbleParams.y = initialBubbleY + totalDeltaY
                     windowManager.updateViewLayout(this, bubbleParams)
 
-                    // Jika sub-menu sedang terbuka, geser juga sub-menu mengikuti bubble utama
-                    if (currentState == BubbleState.MENU_OPEN) {
+                    // Jika sub-menu sedang terbuka atau tertutup, sinkronisasi posisinya agar tetap menempel
+                    if (currentState == BubbleState.MENU_OPEN || currentState == BubbleState.CLOSING_MENU || currentState == BubbleState.OPENING_MENU) {
                         updateSubMenuPosition()
+                    }
+                    
+                    // Sembunyikan otomatis jika awalnya terbuka
+                    if (currentState == BubbleState.MENU_OPEN) {
+                        closeSubMenu()
                     }
                 }
             }
@@ -114,6 +119,12 @@ class FloatingBubbleService : Service() {
                     BubbleState.IDLE -> openSubMenu()
                     BubbleState.MENU_OPEN -> closeSubMenu()
                     else -> {}
+                }
+            }
+            
+            onBubbleOutsideTouched = {
+                if (currentState == BubbleState.MENU_OPEN) {
+                    closeSubMenu()
                 }
             }
         }
@@ -226,6 +237,34 @@ class FloatingBubbleService : Service() {
         windowManager.addView(subMenuViewCamera, subMenuParamsCamera)
         windowManager.addView(subMenuViewClose, subMenuParamsClose)
 
+        val mainSize = resources.getDimensionPixelSize(R.dimen.bubble_main_size)
+        val bubbleCenterX = bubbleParams.x + mainSize / 2f
+        val bubbleCenterY = bubbleParams.y + mainSize / 2f
+
+        val startX = (bubbleCenterX - subSize / 2f).toInt()
+        val startY = (bubbleCenterY - subSize / 2f).toInt()
+
+        val endCamX = cameraCoords.first
+        val endCamY = cameraCoords.second
+        val endCloseX = closeCoords.first
+        val endCloseY = closeCoords.second
+
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 250
+            interpolator = android.view.animation.OvershootInterpolator()
+            addUpdateListener { anim ->
+                val fraction = anim.animatedValue as Float
+                subMenuParamsCamera?.x = (startX + (endCamX - startX) * fraction).toInt()
+                subMenuParamsCamera?.y = (startY + (endCamY - startY) * fraction).toInt()
+                subMenuParamsClose?.x = (startX + (endCloseX - startX) * fraction).toInt()
+                subMenuParamsClose?.y = (startY + (endCloseY - startY) * fraction).toInt()
+                
+                subMenuViewCamera?.let { windowManager.updateViewLayout(it, subMenuParamsCamera) }
+                subMenuViewClose?.let { windowManager.updateViewLayout(it, subMenuParamsClose) }
+            }
+            start()
+        }
+
         subMenuViewCamera?.animateShow()
         subMenuViewClose?.animateShow()
 
@@ -272,6 +311,37 @@ class FloatingBubbleService : Service() {
             return
         }
 
+        val mainSize = resources.getDimensionPixelSize(R.dimen.bubble_main_size)
+        val subSize = resources.getDimensionPixelSize(R.dimen.bubble_sub_size)
+        
+        val endX = (bubbleParams.x + mainSize / 2f - subSize / 2f).toInt()
+        val endY = (bubbleParams.y + mainSize / 2f - subSize / 2f).toInt()
+
+        val startCamX = subMenuParamsCamera?.x ?: 0
+        val startCamY = subMenuParamsCamera?.y ?: 0
+        val startCloseX = subMenuParamsClose?.x ?: 0
+        val startCloseY = subMenuParamsClose?.y ?: 0
+
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 150
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener { anim ->
+                val fraction = anim.animatedValue as Float
+                subMenuParamsCamera?.x = (startCamX + (endX - startCamX) * fraction).toInt()
+                subMenuParamsCamera?.y = (startCamY + (endY - startCamY) * fraction).toInt()
+                subMenuParamsClose?.x = (startCloseX + (endX - startCloseX) * fraction).toInt()
+                subMenuParamsClose?.y = (startCloseY + (endY - startCloseY) * fraction).toInt()
+                
+                if (subMenuViewCamera != null && subMenuParamsCamera != null) {
+                    try { windowManager.updateViewLayout(subMenuViewCamera, subMenuParamsCamera) } catch (e: Exception) {}
+                }
+                if (subMenuViewClose != null && subMenuParamsClose != null) {
+                    try { windowManager.updateViewLayout(subMenuViewClose, subMenuParamsClose) } catch (e: Exception) {}
+                }
+            }
+            start()
+        }
+
         viewCamera?.animateHide()
         viewClose?.animateHide()
 
@@ -304,7 +374,7 @@ class FloatingBubbleService : Service() {
     }
 
     private fun startScanningProcess() {
-        if (currentState != BubbleState.MENU_OPEN && currentState != BubbleState.IDLE) return
+        if (currentState == BubbleState.SCANNING || currentState == BubbleState.SHOW_RESULT) return
         
         currentState = BubbleState.SCANNING
 
@@ -347,17 +417,37 @@ class FloatingBubbleService : Service() {
         bubbleView?.visibility = View.GONE
 
         val panelParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             layoutType,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
-        )
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        var initialPanelX = 0
+        var initialPanelY = 0
 
         resultPanelView = ResultPanelView(this).apply {
             bindScanResult(result)
             onCloseClicked = {
                 closeResultPanel()
+            }
+            onPanelTouchDown = {
+                initialPanelX = panelParams.x
+                initialPanelY = panelParams.y
+            }
+            onPanelDragged = { deltaX, deltaY ->
+                panelParams.x = initialPanelX + deltaX
+                panelParams.y = initialPanelY + deltaY
+                windowManager.updateViewLayout(this, panelParams)
+            }
+            onPanelSizeChanged = {
+                // Ensure LayoutParams is WRAP_CONTENT to wrap the newly visible/hidden elements
+                panelParams.width = WindowManager.LayoutParams.WRAP_CONTENT
+                panelParams.height = WindowManager.LayoutParams.WRAP_CONTENT
+                windowManager.updateViewLayout(this, panelParams)
             }
         }
 
