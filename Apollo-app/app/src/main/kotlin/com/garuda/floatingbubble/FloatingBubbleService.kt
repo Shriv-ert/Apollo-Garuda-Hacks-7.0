@@ -43,14 +43,19 @@ class FloatingBubbleService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var currentState = BubbleState.IDLE
+    private var currentAnimator: android.animation.ValueAnimator? = null
 
     private var bubbleView: BubbleView? = null
     private var subMenuViewCamera: SubMenuView? = null
+    private var subMenuViewPaste: SubMenuView? = null
+    private var subMenuViewHome: SubMenuView? = null
     private var subMenuViewClose: SubMenuView? = null
     private var resultPanelView: ResultPanelView? = null
 
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private var subMenuParamsCamera: WindowManager.LayoutParams? = null
+    private var subMenuParamsPaste: WindowManager.LayoutParams? = null
+    private var subMenuParamsHome: WindowManager.LayoutParams? = null
     private var subMenuParamsClose: WindowManager.LayoutParams? = null
 
     private var initialBubbleX = 0
@@ -64,50 +69,61 @@ class FloatingBubbleService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "ACTION_APP_FOREGROUND") {
+            hideBubble()
+        } else if (intent?.action == "ACTION_APP_BACKGROUND") {
+            showBubble()
+        }
+        return START_STICKY
+    }
+
+    private fun hideBubble() {
+        if (currentState != BubbleState.IDLE) {
+            closeSubMenu()
+        }
+        bubbleView?.visibility = View.GONE
+    }
+
+    private fun showBubble() {
+        if (currentState == BubbleState.IDLE) {
+            bubbleView?.visibility = View.VISIBLE
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        startForegroundServiceNotification()
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return
+        }
 
+        startForegroundServiceNotification()
+        setupSubMenus()
         setupBubbleView()
     }
 
     private fun setupBubbleView() {
-        val bubbleSize = resources.getDimensionPixelSize(R.dimen.bubble_main_size)
-        bubbleParams = WindowManager.LayoutParams(
-            bubbleSize,
-            bubbleSize,
-            layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 48
-            y = 400
-        }
-
         bubbleView = BubbleView(this).apply {
             onBubbleTouchDown = {
-                // Simpan posisi awal bubble saat jari mulai menyentuh
                 initialBubbleX = bubbleParams.x
                 initialBubbleY = bubbleParams.y
             }
 
             onBubbleDragged = { totalDeltaX, totalDeltaY ->
                 if (currentState != BubbleState.SCANNING && currentState != BubbleState.SHOW_RESULT) {
-                    // Posisi baru = Posisi awal sentuhan + total geseran
                     bubbleParams.x = initialBubbleX + totalDeltaX
                     bubbleParams.y = initialBubbleY + totalDeltaY
-                    windowManager.updateViewLayout(this, bubbleParams)
+                    try { windowManager.updateViewLayout(this, bubbleParams) } catch (e: Exception) {}
 
-                    // Jika sub-menu sedang terbuka atau tertutup, sinkronisasi posisinya agar tetap menempel
                     if (currentState == BubbleState.MENU_OPEN || currentState == BubbleState.CLOSING_MENU || currentState == BubbleState.OPENING_MENU) {
                         updateSubMenuPosition()
                     }
                     
-                    // Sembunyikan otomatis jika awalnya terbuka
                     if (currentState == BubbleState.MENU_OPEN) {
                         closeSubMenu()
                     }
@@ -128,11 +144,74 @@ class FloatingBubbleService : Service() {
                 }
             }
         }
+        
+        bubbleParams = WindowManager.LayoutParams(
+            resources.getDimensionPixelSize(R.dimen.bubble_main_size),
+            resources.getDimensionPixelSize(R.dimen.bubble_main_size),
+            layoutType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 48
+            y = 400
+        }
 
         windowManager.addView(bubbleView, bubbleParams)
     }
 
-    private fun getSubMenuCoordinates(): Pair<Pair<Int, Int>, Pair<Int, Int>> {
+    private fun setupSubMenus() {
+        val subSize = resources.getDimensionPixelSize(R.dimen.bubble_sub_size)
+
+        subMenuViewCamera = SubMenuView(this, SubMenuType.CAMERA).apply {
+            visibility = View.GONE
+            onClicked = { if (currentState == BubbleState.MENU_OPEN) startScanningProcess(null) }
+        }
+        subMenuParamsCamera = WindowManager.LayoutParams(subSize, subSize, layoutType, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        subMenuViewPaste = SubMenuView(this, SubMenuType.PASTE).apply {
+            visibility = View.GONE
+            onClicked = { if (currentState == BubbleState.MENU_OPEN) startScanningFromClipboard() }
+        }
+        subMenuParamsPaste = WindowManager.LayoutParams(subSize, subSize, layoutType, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        subMenuViewHome = SubMenuView(this, SubMenuType.HOME).apply {
+            visibility = View.GONE
+            onClicked = { 
+                if (currentState == BubbleState.MENU_OPEN) {
+                    val intent = Intent(this@FloatingBubbleService, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    }
+                    startActivity(intent)
+                    closeSubMenu()
+                }
+            }
+        }
+        subMenuParamsHome = WindowManager.LayoutParams(subSize, subSize, layoutType, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        subMenuViewClose = SubMenuView(this, SubMenuType.CLOSE).apply {
+            visibility = View.GONE
+            onClicked = { if (currentState == BubbleState.MENU_OPEN) stopSelf() }
+        }
+        subMenuParamsClose = WindowManager.LayoutParams(subSize, subSize, layoutType, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        try {
+            windowManager.addView(subMenuViewCamera, subMenuParamsCamera)
+            windowManager.addView(subMenuViewPaste, subMenuParamsPaste)
+            windowManager.addView(subMenuViewHome, subMenuParamsHome)
+            windowManager.addView(subMenuViewClose, subMenuParamsClose)
+        } catch (e: Exception) {}
+    }
+
+    private fun getSubMenuCoordinates(): List<Pair<Int, Int>> {
         val displayMetrics = DisplayMetrics()
         windowManager.defaultDisplay.getMetrics(displayMetrics)
 
@@ -146,126 +225,93 @@ class FloatingBubbleService : Service() {
         val bubbleCenterX = bubbleParams.x + mainSize / 2f
         val bubbleCenterY = bubbleParams.y + mainSize / 2f
 
-        // Vektor dari pusat gelembung menuju ke pusat layar (titik pusat)
         val dirX = screenCenterX - bubbleCenterX
         val dirY = screenCenterY - bubbleCenterY
-        val length = sqrt(dirX * dirX + dirY * dirY)
+        
+        val baseAngle = kotlin.math.atan2(dirY.toDouble(), dirX.toDouble())
+        val angleSpread = Math.PI / 6.0 
+        val radius = (mainSize / 2f) + (subSize / 2f) + (margin * 3.5f)
 
-        // Jarak pusat-ke-pusat antara gelembung utama dan pusat grup sub-menu
-        val distance = (mainSize / 2f) + (subSize / 2f) + margin
+        val angleCamera = baseAngle + angleSpread * 1.5
+        val anglePaste = baseAngle + angleSpread * 0.5
+        val angleHome = baseAngle - angleSpread * 0.5
+        val angleClose = baseAngle - angleSpread * 1.5
 
-        val (unitX, unitY) = if (length > 0f) {
-            Pair(dirX / length, dirY / length)
-        } else {
-            Pair(0f, -1f) // Fallback pointing up if exactly in center
-        }
+        val cameraCenterX = bubbleCenterX + radius * kotlin.math.cos(angleCamera).toFloat()
+        val cameraCenterY = bubbleCenterY + radius * kotlin.math.sin(angleCamera).toFloat()
 
-        // Pusat grup sub-menu
-        val groupCenterX = bubbleCenterX + unitX * distance
-        val groupCenterY = bubbleCenterY + unitY * distance
+        val pasteCenterX = bubbleCenterX + radius * kotlin.math.cos(anglePaste).toFloat()
+        val pasteCenterY = bubbleCenterY + radius * kotlin.math.sin(anglePaste).toFloat()
+        
+        val homeCenterX = bubbleCenterX + radius * kotlin.math.cos(angleHome).toFloat()
+        val homeCenterY = bubbleCenterY + radius * kotlin.math.sin(angleHome).toFloat()
 
-        // Vektor tegak lurus (perpendicular)
-        val perpX = -unitY
-        val perpY = unitX
+        val closeCenterX = bubbleCenterX + radius * kotlin.math.cos(angleClose).toFloat()
+        val closeCenterY = bubbleCenterY + radius * kotlin.math.sin(angleClose).toFloat()
 
-        // Jarak geser dari pusat grup ke masing-masing sub-menu
-        val offsetDistance = (subSize / 2f) + (margin / 2f)
-
-        // Koordinat pusat Camera (x ke posisi positif)
-        val cameraCenterX = groupCenterX + perpX * offsetDistance
-        val cameraCenterY = groupCenterY + perpY * offsetDistance
-
-        // Koordinat pusat Close X (x ke posisi negatif)
-        val closeCenterX = groupCenterX - perpX * offsetDistance
-        val closeCenterY = groupCenterY - perpY * offsetDistance
-
-        // Koordinat top-left untuk WindowManager
         val cameraX = (cameraCenterX - subSize / 2f).toInt().coerceIn(0, displayMetrics.widthPixels - subSize)
         val cameraY = (cameraCenterY - subSize / 2f).toInt().coerceIn(0, displayMetrics.heightPixels - subSize)
+
+        val pasteX = (pasteCenterX - subSize / 2f).toInt().coerceIn(0, displayMetrics.widthPixels - subSize)
+        val pasteY = (pasteCenterY - subSize / 2f).toInt().coerceIn(0, displayMetrics.heightPixels - subSize)
+        
+        val homeX = (homeCenterX - subSize / 2f).toInt().coerceIn(0, displayMetrics.widthPixels - subSize)
+        val homeY = (homeCenterY - subSize / 2f).toInt().coerceIn(0, displayMetrics.heightPixels - subSize)
 
         val closeX = (closeCenterX - subSize / 2f).toInt().coerceIn(0, displayMetrics.widthPixels - subSize)
         val closeY = (closeCenterY - subSize / 2f).toInt().coerceIn(0, displayMetrics.heightPixels - subSize)
 
-        return Pair(Pair(cameraX, cameraY), Pair(closeX, closeY))
+        return listOf(Pair(cameraX, cameraY), Pair(pasteX, pasteY), Pair(homeX, homeY), Pair(closeX, closeY))
     }
 
     private fun openSubMenu() {
         if (currentState != BubbleState.IDLE) return
         currentState = BubbleState.OPENING_MENU
 
-        val subSize = resources.getDimensionPixelSize(R.dimen.bubble_sub_size)
-        val (cameraCoords, closeCoords) = getSubMenuCoordinates()
-
-        // 1. Camera View
-        subMenuParamsCamera = WindowManager.LayoutParams(
-            subSize,
-            subSize,
-            layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = cameraCoords.first
-            y = cameraCoords.second
-        }
-
-        subMenuViewCamera = SubMenuView(this, SubMenuType.CAMERA).apply {
-            onClicked = {
-                startScanningProcess()
-            }
-        }
-
-        // 2. Close View
-        subMenuParamsClose = WindowManager.LayoutParams(
-            subSize,
-            subSize,
-            layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = closeCoords.first
-            y = closeCoords.second
-        }
-
-        subMenuViewClose = SubMenuView(this, SubMenuType.CLOSE).apply {
-            onClicked = {
-                stopSelf()
-            }
-        }
-
-        windowManager.addView(subMenuViewCamera, subMenuParamsCamera)
-        windowManager.addView(subMenuViewClose, subMenuParamsClose)
+        val coords = getSubMenuCoordinates()
+        val cameraCoords = coords[0]
+        val pasteCoords = coords[1]
+        val homeCoords = coords[2]
+        val closeCoords = coords[3]
 
         val mainSize = resources.getDimensionPixelSize(R.dimen.bubble_main_size)
+        val subSize = resources.getDimensionPixelSize(R.dimen.bubble_sub_size)
         val bubbleCenterX = bubbleParams.x + mainSize / 2f
         val bubbleCenterY = bubbleParams.y + mainSize / 2f
-
         val startX = (bubbleCenterX - subSize / 2f).toInt()
         val startY = (bubbleCenterY - subSize / 2f).toInt()
 
-        val endCamX = cameraCoords.first
-        val endCamY = cameraCoords.second
-        val endCloseX = closeCoords.first
-        val endCloseY = closeCoords.second
+        subMenuViewCamera?.visibility = View.VISIBLE
+        subMenuViewPaste?.visibility = View.VISIBLE
+        subMenuViewHome?.visibility = View.VISIBLE
+        subMenuViewClose?.visibility = View.VISIBLE
 
-        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+        currentAnimator?.cancel()
+        currentAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 250
             interpolator = android.view.animation.OvershootInterpolator()
             addUpdateListener { anim ->
                 val fraction = anim.animatedValue as Float
-                subMenuParamsCamera?.x = (startX + (endCamX - startX) * fraction).toInt()
-                subMenuParamsCamera?.y = (startY + (endCamY - startY) * fraction).toInt()
-                subMenuParamsClose?.x = (startX + (endCloseX - startX) * fraction).toInt()
-                subMenuParamsClose?.y = (startY + (endCloseY - startY) * fraction).toInt()
+                subMenuParamsCamera?.x = (startX + (cameraCoords.first - startX) * fraction).toInt()
+                subMenuParamsCamera?.y = (startY + (cameraCoords.second - startY) * fraction).toInt()
+                subMenuParamsPaste?.x = (startX + (pasteCoords.first - startX) * fraction).toInt()
+                subMenuParamsPaste?.y = (startY + (pasteCoords.second - startY) * fraction).toInt()
+                subMenuParamsHome?.x = (startX + (homeCoords.first - startX) * fraction).toInt()
+                subMenuParamsHome?.y = (startY + (homeCoords.second - startY) * fraction).toInt()
+                subMenuParamsClose?.x = (startX + (closeCoords.first - startX) * fraction).toInt()
+                subMenuParamsClose?.y = (startY + (closeCoords.second - startY) * fraction).toInt()
                 
-                subMenuViewCamera?.let { windowManager.updateViewLayout(it, subMenuParamsCamera) }
-                subMenuViewClose?.let { windowManager.updateViewLayout(it, subMenuParamsClose) }
+                try { subMenuViewCamera?.let { windowManager.updateViewLayout(it, subMenuParamsCamera) } } catch (e: Exception) {}
+                try { subMenuViewPaste?.let { windowManager.updateViewLayout(it, subMenuParamsPaste) } } catch (e: Exception) {}
+                try { subMenuViewHome?.let { windowManager.updateViewLayout(it, subMenuParamsHome) } } catch (e: Exception) {}
+                try { subMenuViewClose?.let { windowManager.updateViewLayout(it, subMenuParamsClose) } } catch (e: Exception) {}
             }
             start()
         }
 
         subMenuViewCamera?.animateShow()
+        subMenuViewPaste?.animateShow()
+        subMenuViewHome?.animateShow()
         subMenuViewClose?.animateShow()
 
         bubbleView?.postDelayed({
@@ -276,13 +322,33 @@ class FloatingBubbleService : Service() {
     }
 
     private fun updateSubMenuPosition() {
-        val (cameraCoords, closeCoords) = getSubMenuCoordinates()
+        val coords = getSubMenuCoordinates()
+        val cameraCoords = coords[0]
+        val pasteCoords = coords[1]
+        val homeCoords = coords[2]
+        val closeCoords = coords[3]
 
         subMenuViewCamera?.let { sub ->
             subMenuParamsCamera?.let { params ->
                 params.x = cameraCoords.first
                 params.y = cameraCoords.second
-                windowManager.updateViewLayout(sub, params)
+                try { windowManager.updateViewLayout(sub, params) } catch (e: Exception) {}
+            }
+        }
+
+        subMenuViewPaste?.let { sub ->
+            subMenuParamsPaste?.let { params ->
+                params.x = pasteCoords.first
+                params.y = pasteCoords.second
+                try { windowManager.updateViewLayout(sub, params) } catch (e: Exception) {}
+            }
+        }
+        
+        subMenuViewHome?.let { sub ->
+            subMenuParamsHome?.let { params ->
+                params.x = homeCoords.first
+                params.y = homeCoords.second
+                try { windowManager.updateViewLayout(sub, params) } catch (e: Exception) {}
             }
         }
 
@@ -290,7 +356,7 @@ class FloatingBubbleService : Service() {
             subMenuParamsClose?.let { params ->
                 params.x = closeCoords.first
                 params.y = closeCoords.second
-                windowManager.updateViewLayout(sub, params)
+                try { windowManager.updateViewLayout(sub, params) } catch (e: Exception) {}
             }
         }
     }
@@ -302,70 +368,54 @@ class FloatingBubbleService : Service() {
         }
         currentState = BubbleState.CLOSING_MENU
 
-        val viewCamera = subMenuViewCamera
-        val viewClose = subMenuViewClose
-
-        if (viewCamera == null && viewClose == null) {
-            currentState = BubbleState.IDLE
-            onClosed?.invoke()
-            return
-        }
-
         val mainSize = resources.getDimensionPixelSize(R.dimen.bubble_main_size)
         val subSize = resources.getDimensionPixelSize(R.dimen.bubble_sub_size)
-        
         val endX = (bubbleParams.x + mainSize / 2f - subSize / 2f).toInt()
         val endY = (bubbleParams.y + mainSize / 2f - subSize / 2f).toInt()
 
         val startCamX = subMenuParamsCamera?.x ?: 0
         val startCamY = subMenuParamsCamera?.y ?: 0
+        val startPasteX = subMenuParamsPaste?.x ?: 0
+        val startPasteY = subMenuParamsPaste?.y ?: 0
+        val startHomeX = subMenuParamsHome?.x ?: 0
+        val startHomeY = subMenuParamsHome?.y ?: 0
         val startCloseX = subMenuParamsClose?.x ?: 0
         val startCloseY = subMenuParamsClose?.y ?: 0
 
-        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+        currentAnimator?.cancel()
+        currentAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 150
             interpolator = android.view.animation.AccelerateDecelerateInterpolator()
             addUpdateListener { anim ->
                 val fraction = anim.animatedValue as Float
                 subMenuParamsCamera?.x = (startCamX + (endX - startCamX) * fraction).toInt()
                 subMenuParamsCamera?.y = (startCamY + (endY - startCamY) * fraction).toInt()
+                subMenuParamsPaste?.x = (startPasteX + (endX - startPasteX) * fraction).toInt()
+                subMenuParamsPaste?.y = (startPasteY + (endY - startPasteY) * fraction).toInt()
+                subMenuParamsHome?.x = (startHomeX + (endX - startHomeX) * fraction).toInt()
+                subMenuParamsHome?.y = (startHomeY + (endY - startHomeY) * fraction).toInt()
                 subMenuParamsClose?.x = (startCloseX + (endX - startCloseX) * fraction).toInt()
                 subMenuParamsClose?.y = (startCloseY + (endY - startCloseY) * fraction).toInt()
                 
-                if (subMenuViewCamera != null && subMenuParamsCamera != null) {
-                    try { windowManager.updateViewLayout(subMenuViewCamera, subMenuParamsCamera) } catch (e: Exception) {}
-                }
-                if (subMenuViewClose != null && subMenuParamsClose != null) {
-                    try { windowManager.updateViewLayout(subMenuViewClose, subMenuParamsClose) } catch (e: Exception) {}
-                }
+                try { subMenuViewCamera?.let { windowManager.updateViewLayout(it, subMenuParamsCamera) } } catch (e: Exception) {}
+                try { subMenuViewPaste?.let { windowManager.updateViewLayout(it, subMenuParamsPaste) } } catch (e: Exception) {}
+                try { subMenuViewHome?.let { windowManager.updateViewLayout(it, subMenuParamsHome) } } catch (e: Exception) {}
+                try { subMenuViewClose?.let { windowManager.updateViewLayout(it, subMenuParamsClose) } } catch (e: Exception) {}
             }
             start()
         }
 
-        viewCamera?.animateHide()
-        viewClose?.animateHide()
+        subMenuViewCamera?.animateHide()
+        subMenuViewPaste?.animateHide()
+        subMenuViewHome?.animateHide()
+        subMenuViewClose?.animateHide()
 
         bubbleView?.postDelayed({
-            try {
-                if (viewCamera != null) windowManager.removeView(viewCamera)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                if (viewClose != null) windowManager.removeView(viewClose)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            if (subMenuViewCamera == viewCamera) {
-                subMenuViewCamera = null
-                subMenuParamsCamera = null
-            }
-            if (subMenuViewClose == viewClose) {
-                subMenuViewClose = null
-                subMenuParamsClose = null
-            }
-
+            try { subMenuViewCamera?.visibility = View.GONE } catch (e: Exception) {}
+            try { subMenuViewPaste?.visibility = View.GONE } catch (e: Exception) {}
+            try { subMenuViewHome?.visibility = View.GONE } catch (e: Exception) {}
+            try { subMenuViewClose?.visibility = View.GONE } catch (e: Exception) {}
+            
             if (currentState == BubbleState.CLOSING_MENU) {
                 currentState = BubbleState.IDLE
             }
@@ -373,39 +423,63 @@ class FloatingBubbleService : Service() {
         }, 160L)
     }
 
-    private fun startScanningProcess() {
+    private fun startScanningFromClipboard() {
+        val focusParams = WindowManager.LayoutParams(
+            1, 1,
+            layoutType,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT
+        )
+        val dummyView = View(this)
+        windowManager.addView(dummyView, focusParams)
+
+        dummyView.postDelayed({
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val copiedText = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+
+            windowManager.removeView(dummyView)
+
+            if (copiedText.isNullOrEmpty()) {
+                android.widget.Toast.makeText(this, "Clipboard kosong", android.widget.Toast.LENGTH_SHORT).show()
+                closeSubMenu()
+                return@postDelayed
+            }
+
+            startDirectPasteProcess(copiedText)
+        }, 50)
+    }
+
+    private fun startDirectPasteProcess(textToScan: String) {
+        if (currentState == BubbleState.SCANNING || currentState == BubbleState.SHOW_RESULT) return
+        currentState = BubbleState.SCANNING
+
+        try { subMenuViewCamera?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewPaste?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewHome?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewClose?.visibility = View.GONE } catch (e: Exception) {}
+
+        serviceScope.launch {
+            val scanResult = FakeScanEngine.performInstantFakeScan(textToScan)
+            showResultPanel(scanResult)
+        }
+    }
+
+    private fun startScanningProcess(textToScan: String?) {
         if (currentState == BubbleState.SCANNING || currentState == BubbleState.SHOW_RESULT) return
         
         currentState = BubbleState.SCANNING
 
-        val viewCamera = subMenuViewCamera
-        val viewClose = subMenuViewClose
+        try { subMenuViewCamera?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewPaste?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewHome?.visibility = View.GONE } catch (e: Exception) {}
+        try { subMenuViewClose?.visibility = View.GONE } catch (e: Exception) {}
 
-        try {
-            if (viewCamera != null) windowManager.removeView(viewCamera)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        try {
-            if (viewClose != null) windowManager.removeView(viewClose)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        subMenuViewCamera = null
-        subMenuParamsCamera = null
-        subMenuViewClose = null
-        subMenuParamsClose = null
-
-        // 1. Efek kilat putih simulasi screenshot
         ScreenFlashUtil.flashScreen(this@FloatingBubbleService, 120L)
 
-        // 2. Ubah bubble utama menjadi loading spinner berputar
         bubbleView?.setScanningState(true)
 
-        // 3. Jalankan FakeScanEngine di background (3 detik)
         serviceScope.launch {
-            val scanResult = FakeScanEngine.performFakeScan()
+            val scanResult = FakeScanEngine.performFakeScan(textToScan)
             showResultPanel(scanResult)
         }
     }
@@ -485,7 +559,7 @@ class FloatingBubbleService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("AWAM - Agen Verifikasi Aktif")
-            .setContentText("Ketuk gelembung melayang untuk memindai penipuan di layar Anda.")
+            .setContentText("Ketuk Awam melayang untuk memindai penipuan di layar Anda.")
             .setSmallIcon(android.R.drawable.sym_def_app_icon)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -496,9 +570,12 @@ class FloatingBubbleService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        currentAnimator?.cancel()
 
         bubbleView?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
         subMenuViewCamera?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
+        subMenuViewPaste?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
+        subMenuViewHome?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
         subMenuViewClose?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
         resultPanelView?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
     }

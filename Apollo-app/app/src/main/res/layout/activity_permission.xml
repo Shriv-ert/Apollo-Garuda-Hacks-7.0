@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/awam_main"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Izin Diperlukan"
+        android:textColor="@color/awam_surface"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="AWAM membutuhkan izin Tampilkan di Atas Aplikasi Lain agar Awam dapat muncul saat kamu menggunakan aplikasi lain.\n\nTanpa izin ini, kamu tetap bisa mengakses aplikasi namun fitur Awam tidak akan tersedia."
+        android:textColor="@color/awam_text_light"
+        android:textSize="14sp"
+        android:lineSpacingExtra="4dp"
+        android:gravity="center"
+        android:layout_marginBottom="40dp" />
+
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnAllow"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_button_primary"
+        android:text="Berikan Izin"
+        android:textAllCaps="false"
+        android:textColor="@color/awam_surface"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnSkip"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@android:color/transparent"
+        android:text="Lewati"
+        android:textAllCaps="false"
+        android:textColor="@color/awam_text_light"
+        android:textSize="14sp" />
+
+</LinearLayout>

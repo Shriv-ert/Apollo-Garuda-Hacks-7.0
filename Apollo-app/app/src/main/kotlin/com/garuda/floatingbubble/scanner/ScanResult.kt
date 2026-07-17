@@ -11,9 +11,10 @@ data class SourceItem(
 
 data class ScanResult(
     val riskLevel: RiskLevel,
-    val riskScore: Int,
+    val riskScore: Int, // 0 - 100
     val verdictShort: String,
     val verdictDetail: String,
     val sources: List<SourceItem>,
-    val target: String
+    val target: String,
+    val scannedText: String? = null
 )

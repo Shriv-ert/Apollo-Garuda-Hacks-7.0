@@ -1,85 +1,69 @@
 package com.garuda.floatingbubble
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
+import com.garuda.floatingbubble.ui.HistoryFragment
+import com.garuda.floatingbubble.ui.HomeFragment
+import com.garuda.floatingbubble.ui.PermissionActivity
+import com.garuda.floatingbubble.ui.SettingsFragment
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {
 
-    private val OVERLAY_PERMISSION_REQ_CODE = 1234
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Pengecekan Login
-        val sharedPref = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-        val isLoggedIn = sharedPref.getBoolean("is_logged_in", false)
-        
-        if (!isLoggedIn) {
-            val intent = Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java)
-            startActivity(intent)
+
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+
+        if (!prefs.getBoolean("is_logged_in", false)) {
+            startActivity(Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java))
+            finish()
+            return
+        }
+
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else true
+
+        if (!hasOverlay && !prefs.getBoolean("overlay_asked", false)) {
+            startActivity(Intent(this, PermissionActivity::class.java))
             finish()
             return
         }
 
         setContentView(R.layout.activity_main)
 
-        val btnStartBubble = findViewById<Button>(R.id.btnStartBubble)
-        btnStartBubble.setOnClickListener {
-            if (checkOverlayPermission()) {
+        if (hasOverlay) {
+            val isBubbleEnabled = prefs.getBoolean("bubble_enabled", true)
+            if (isBubbleEnabled) {
                 startFloatingBubbleService()
-            } else {
-                requestOverlayPermission()
             }
         }
 
-        val btnLogout = findViewById<Button>(R.id.btnLogout)
-        btnLogout.setOnClickListener {
-            sharedPref.edit().putBoolean("is_logged_in", false).apply()
-            
-            // Hentikan service jika sedang berjalan
-            val serviceIntent = Intent(this, FloatingBubbleService::class.java)
-            stopService(serviceIntent)
-            
-            Toast.makeText(this, "Logout Berhasil", Toast.LENGTH_SHORT).show()
-            val intent = Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java)
-            startActivity(intent)
-            finish()
-        }
-    }
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNav)
 
-    private fun checkOverlayPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
+        if (savedInstanceState == null) {
+            loadFragment(HomeFragment())
+        }
+
+        bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> loadFragment(HomeFragment())
+                R.id.nav_history -> loadFragment(HistoryFragment())
+                R.id.nav_settings -> loadFragment(SettingsFragment())
+            }
             true
         }
     }
 
-    private fun requestOverlayPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivityForResult(intent, OVERLAY_PERMISSION_REQ_CODE)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQ_CODE) {
-            if (checkOverlayPermission()) {
-                startFloatingBubbleService()
-            } else {
-                Toast.makeText(this, "Izin overlay ditolak. AWAM tidak dapat menampilkan gelembung.", Toast.LENGTH_SHORT).show()
-            }
-        }
+    private fun loadFragment(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragmentContainer, fragment)
+            .commit()
     }
 
     private fun startFloatingBubbleService() {
@@ -89,6 +73,5 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        Toast.makeText(this, "Mengaktifkan AWAM Floating Bubble...", Toast.LENGTH_SHORT).show()
     }
 }

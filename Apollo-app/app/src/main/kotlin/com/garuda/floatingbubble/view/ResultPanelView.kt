@@ -124,6 +124,14 @@ class ResultPanelView @JvmOverloads constructor(
         tvRiskScore.text = "${result.riskScore}%"
         tvExplanation.text = result.verdictDetail
 
+        val tvScannedText = findViewById<TextView>(R.id.tvScannedText)
+        if (!result.scannedText.isNullOrEmpty()) {
+            tvScannedText.visibility = View.VISIBLE
+            tvScannedText.text = "Teks yang dipindai:\n\"${result.scannedText}\""
+        } else {
+            tvScannedText.visibility = View.GONE
+        }
+
         when (result.riskLevel) {
             RiskLevel.DANGER -> riskBarLayout.setBackgroundResource(R.drawable.bg_risk_bar_red)
             RiskLevel.WARNING -> riskBarLayout.setBackgroundResource(R.drawable.bg_risk_bar_yellow)

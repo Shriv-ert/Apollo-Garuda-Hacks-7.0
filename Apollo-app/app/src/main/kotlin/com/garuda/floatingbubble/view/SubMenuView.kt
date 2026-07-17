@@ -16,6 +16,8 @@ import kotlin.math.abs
 
 enum class SubMenuType {
     CAMERA,
+    PASTE,
+    HOME,
     CLOSE
 }
 
@@ -36,7 +38,12 @@ class SubMenuView(
         }
 
         val ivIcon = ImageView(context).apply {
-            val drawableRes = if (type == SubMenuType.CAMERA) R.drawable.ic_camera else R.drawable.ic_close
+            val drawableRes = when (type) {
+                SubMenuType.CAMERA -> R.drawable.ic_camera
+                SubMenuType.PASTE -> R.drawable.ic_paste
+                SubMenuType.HOME -> R.drawable.ic_home
+                SubMenuType.CLOSE -> R.drawable.ic_close
+            }
             setImageResource(drawableRes)
             
             if (type == SubMenuType.CLOSE) {

@@ -147,6 +147,22 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <!-- Teks yang di-scan -->
+                <TextView
+                    android:id="@+id/tvScannedText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:lineSpacingExtra="4dp"
+                    android:background="@drawable/bg_source_card"
+                    android:padding="8dp"
+                    android:text="Teks yang disalin akan muncul di sini..."
+                    android:textColor="@color/awam_surface"
+                    android:textSize="12sp"
+                    android:textStyle="italic"
+                    android:visibility="gone" />
+
                 <!-- Penjelasan AI -->
                 <TextView
                     android:id="@+id/tvExplanation"
