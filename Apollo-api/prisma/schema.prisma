@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  role         String    @default("user") // "user" | "admin"
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  reports         Report[]  @relation("ReporterReports")
+  reviewedReports Report[]  @relation("ReviewerReports")
+
+  @@map("users")
+}
+
+model Entity {
+  id              Int       @id @default(autoincrement())
+  type            String    // "phone" | "bank_account" | "url" | "email"
+  value           String    @unique
+  status          String    @default("unknown") // "ojk_verified" | "ojk_illegal" | "scammer" | "unknown"
+  riskScore       Int       @default(0) @map("risk_score")
+  confidenceScore Float     @default(0) @map("confidence_score")
+  reportCount     Int       @default(0) @map("report_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  reports         Report[]
+  sourceRelations EntityRelation[] @relation("SourceRelations")
+  targetRelations EntityRelation[] @relation("TargetRelations")
+
+  @@map("entities")
+}
+
+model Report {
+  id           Int        @id @default(autoincrement())
+  userId       Int        @map("user_id")
+  entityId     Int        @map("entity_id")
+  category     String
+  description  String
+  proofImage   String     @map("proof_image")
+  status       String     @default("pending") // "pending" | "reviewing" | "verified" | "rejected"
+  reviewedById Int?       @map("reviewed_by_id")
+  reviewNote   String?    @map("review_note")
+  reviewedAt   DateTime?  @map("reviewed_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  user         User       @relation("ReporterReports", fields: [userId], references: [id])
+  entity       Entity     @relation(fields: [entityId], references: [id])
+  reviewer     User?      @relation("ReviewerReports", fields: [reviewedById], references: [id])
+
+  @@index([userId])
+  @@index([entityId])
+  @@index([status])
+  @@index([reviewedById])
+  @@map("reports")
+}
+
+model EntityRelation {
+  id           Int      @id @default(autoincrement())
+  sourceId     Int      @map("source_id")
+  targetId     Int      @map("target_id")
+  relationType String   @map("relation_type")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  source       Entity   @relation("SourceRelations", fields: [sourceId], references: [id])
+  target       Entity   @relation("TargetRelations", fields: [targetId], references: [id])
+
+  @@index([sourceId])
+  @@index([targetId])
+  @@map("entity_relations")
+}
