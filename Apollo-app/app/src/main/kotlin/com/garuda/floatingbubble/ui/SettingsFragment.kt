@@ -1,8 +1,6 @@
 package com.garuda.floatingbubble.ui
 
-import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -16,6 +14,8 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.garuda.floatingbubble.FloatingBubbleService
 import com.garuda.floatingbubble.R
+import com.garuda.floatingbubble.auth.LoginActivity
+import com.garuda.floatingbubble.data.SessionManager
 
 class SettingsFragment : Fragment() {
 
@@ -37,11 +37,25 @@ class SettingsFragment : Fragment() {
         rowOverlay = view.findViewById(R.id.rowOverlay)
         rowBubble = view.findViewById(R.id.rowBubble)
         val btnLogout = view.findViewById<Button>(R.id.btnLogout)
+        val btnAdminDashboard = view.findViewById<Button>(R.id.btnAdminDashboard)
+
+        // Populate user info from SessionManager
+        view.findViewById<TextView>(R.id.tvUserName).text =
+            SessionManager.getFullName(requireContext()).ifEmpty { "Pengguna Awam" }
+        view.findViewById<TextView>(R.id.tvUserEmail).text =
+            SessionManager.getEmail(requireContext()).ifEmpty { "—" }
+
+        // Admin button: only visible for admin role
+        btnAdminDashboard.visibility = if (SessionManager.isAdmin(requireContext())) View.VISIBLE else View.GONE
+        btnAdminDashboard.setOnClickListener {
+            startActivity(Intent(requireContext(), AdminDashboardActivity::class.java))
+        }
 
         rowOverlay.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 startActivityForResult(
-                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${requireContext().packageName}")),
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:${requireContext().packageName}")),
                     OVERLAY_REQ
                 )
             }
@@ -53,7 +67,6 @@ class SettingsFragment : Fragment() {
             } else true
 
             if (!hasOverlay) {
-                // Highlight the overlay row since permission is missing
                 rowOverlay.setBackgroundColor(resources.getColor(R.color.awam_warning, null))
                 rowOverlay.postDelayed({
                     rowOverlay.setBackgroundResource(R.color.awam_card_bg)
@@ -62,11 +75,10 @@ class SettingsFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val prefs = requireContext().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
             val currentState = prefs.getBoolean("bubble_enabled", true)
             prefs.edit().putBoolean("bubble_enabled", !currentState).apply()
-            
-            // If turning off, stop the service immediately
+
             if (currentState) {
                 requireContext().stopService(Intent(requireContext(), FloatingBubbleService::class.java))
             }
@@ -74,20 +86,12 @@ class SettingsFragment : Fragment() {
         }
 
         btnLogout.setOnClickListener {
-            val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            prefs.edit()
-                .putBoolean("is_logged_in", false)
-                .putBoolean("overlay_asked", false)
-                .apply()
+            SessionManager.clearSession(requireContext())
             requireContext().stopService(Intent(requireContext(), FloatingBubbleService::class.java))
             Toast.makeText(requireContext(), "Logout Berhasil", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(requireContext(), com.garuda.floatingbubble.auth.LoginActivity::class.java))
+            startActivity(Intent(requireContext(), LoginActivity::class.java)
+                .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
             requireActivity().finish()
-        }
-
-        val btnAdminDashboard = view.findViewById<Button>(R.id.btnAdminDashboard)
-        btnAdminDashboard.setOnClickListener {
-            startActivity(Intent(requireContext(), AdminDashboardActivity::class.java))
         }
 
         refreshUI()
@@ -111,7 +115,7 @@ class SettingsFragment : Fragment() {
             tvOverlay.setTextColor(resources.getColor(R.color.awam_warning, null))
         }
 
-        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val prefs = requireContext().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
         val isBubbleEnabled = prefs.getBoolean("bubble_enabled", true)
 
         if (!hasOverlay) {

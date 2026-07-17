@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,7 +9,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 
 model User {
   id           Int       @id @default(autoincrement())
@@ -33,6 +29,7 @@ model Entity {
   id              Int       @id @default(autoincrement())
   type            String    // "phone" | "bank_account" | "url" | "email"
   value           String    @unique
+  category        String?   // "Pinjol Ilegal" | "Penipuan Online" | "Spam/Phishing" | "Investasi Bodong" | "Lainnya"
   status          String    @default("unknown") // "ojk_verified" | "ojk_illegal" | "scammer" | "unknown"
   riskScore       Int       @default(0) @map("risk_score")
   confidenceScore Float     @default(0) @map("confidence_score")
@@ -40,7 +37,7 @@ model Entity {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  reports         Report[]
+  reportEntities  ReportEntity[]
   sourceRelations EntityRelation[] @relation("SourceRelations")
   targetRelations EntityRelation[] @relation("TargetRelations")
 
@@ -49,8 +46,7 @@ model Entity {
 
 model Report {
   id           Int        @id @default(autoincrement())
-  userId       Int        @map("user_id")
-  entityId     Int        @map("entity_id")
+  userId       Int        @map("us er_id")
   category     String
   description  String
   proofImage   String     @map("proof_image")
@@ -61,15 +57,28 @@ model Report {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  user         User       @relation("ReporterReports", fields: [userId], references: [id])
-  entity       Entity     @relation(fields: [entityId], references: [id])
-  reviewer     User?      @relation("ReviewerReports", fields: [reviewedById], references: [id])
+  user           User           @relation("ReporterReports", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer       User?          @relation("ReviewerReports", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reportEntities ReportEntity[]
 
   @@index([userId])
-  @@index([entityId])
   @@index([status])
   @@index([reviewedById])
   @@map("reports")
+}
+
+model ReportEntity {
+  id       Int    @id @default(autoincrement())
+  reportId Int    @map("report_id")
+  entityId Int    @map("entity_id")
+
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  entity   Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, entityId])
+  @@index([reportId])
+  @@index([entityId])
+  @@map("report_entities")
 }
 
 model EntityRelation {
@@ -79,8 +88,8 @@ model EntityRelation {
   relationType String   @map("relation_type")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  source       Entity   @relation("SourceRelations", fields: [sourceId], references: [id])
-  target       Entity   @relation("TargetRelations", fields: [targetId], references: [id])
+  source       Entity   @relation("SourceRelations", fields: [sourceId], references: [id], onDelete: Cascade)
+  target       Entity   @relation("TargetRelations", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@index([sourceId])
   @@index([targetId])

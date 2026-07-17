@@ -1,6 +1,5 @@
 package com.garuda.floatingbubble.auth
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -10,12 +9,15 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.garuda.floatingbubble.MainActivity
 import com.garuda.floatingbubble.R
+import com.garuda.floatingbubble.data.ApiConfig
+import com.garuda.floatingbubble.data.RegisterRequest
+import com.garuda.floatingbubble.data.SessionManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -45,35 +47,49 @@ class RegisterActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Mockup proses register (Happy Path 1A / Error 1B)
             btnRegister.isEnabled = false
             pbLoading.visibility = View.VISIBLE
 
-            CoroutineScope(Dispatchers.Main).launch {
-                delay(1500) // Simulasi loading API
-
-                if (email == "already@exist.com") {
-                    // Simulasi email sudah ada
-                    Toast.makeText(this@RegisterActivity, "Email sudah terdaftar", Toast.LENGTH_SHORT).show()
-                    btnRegister.isEnabled = true
-                    pbLoading.visibility = View.GONE
-                } else {
-                    // Registrasi Berhasil
-                    val sharedPref = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                    sharedPref.edit().putBoolean("is_logged_in", true).apply()
-
-                    Toast.makeText(this@RegisterActivity, "Registrasi Berhasil!", Toast.LENGTH_SHORT).show()
-                    val intent = Intent(this@RegisterActivity, MainActivity::class.java)
-                    // Clear backstack agar user tidak bisa kembali ke Register/Login setelah masuk
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
-                    finish()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    // Backend expects full_name (mapped by @SerializedName in RegisterRequest)
+                    val response = ApiConfig.apiService.register(
+                        RegisterRequest(email = email, fullName = name, password = password)
+                    )
+                    withContext(Dispatchers.Main) {
+                        pbLoading.visibility = View.GONE
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            val authData = response.body()!!.data
+                            SessionManager.saveSession(
+                                context = this@RegisterActivity,
+                                token = authData.token,
+                                userId = authData.user.id,
+                                email = authData.user.email,
+                                fullName = authData.user.fullName,
+                                role = authData.user.role
+                            )
+                            Toast.makeText(this@RegisterActivity, "Registrasi Berhasil!", Toast.LENGTH_SHORT).show()
+                            startActivity(Intent(this@RegisterActivity, MainActivity::class.java)
+                                .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
+                            finish()
+                        } else {
+                            val msg = response.body()?.message ?: "Registrasi gagal"
+                            Toast.makeText(this@RegisterActivity, msg, Toast.LENGTH_SHORT).show()
+                            btnRegister.isEnabled = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        pbLoading.visibility = View.GONE
+                        btnRegister.isEnabled = true
+                        Toast.makeText(this@RegisterActivity, "Gagal terhubung ke server: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
 
         tvToLogin.setOnClickListener {
-            finish() // Kembali ke LoginActivity
+            finish()
         }
     }
 }

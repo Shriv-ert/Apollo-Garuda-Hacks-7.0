@@ -18,6 +18,7 @@ export class GraphService {
       id: String(e.id),
       type: e.type,
       value: e.value,
+      category: e.category || undefined,
       status: e.status,
       risk_score: e.riskScore,
       report_count: e.reportCount,

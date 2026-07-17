@@ -7,6 +7,7 @@ import { CheckModule } from './check/check.module';
 import { ReportModule } from './report/report.module';
 import { AdminModule } from './admin/admin.module';
 import { GraphModule } from './graph/graph.module';
+import { EntityModule } from './entity/entity.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
@@ -20,6 +21,7 @@ import { ConfigModule } from '@nestjs/config';
     ReportModule,
     AdminModule,
     GraphModule,
+    EntityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

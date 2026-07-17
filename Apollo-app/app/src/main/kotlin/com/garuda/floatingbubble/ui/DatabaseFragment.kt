@@ -7,10 +7,21 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.garuda.floatingbubble.R
+import com.garuda.floatingbubble.data.ApiConfig
+import com.garuda.floatingbubble.data.EntityItem
+import com.garuda.floatingbubble.data.GraphEdge
+import com.garuda.floatingbubble.data.GraphNode
+import com.garuda.floatingbubble.data.SessionManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DatabaseFragment : Fragment() {
 
@@ -24,6 +35,8 @@ class DatabaseFragment : Fragment() {
     private lateinit var btnFilterUrl: android.widget.TextView
     private lateinit var btnFilterEmail: android.widget.TextView
     private var currentType: String? = null
+
+    private var allEntities: List<EntityItem> = emptyList()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -46,21 +59,49 @@ class DatabaseFragment : Fragment() {
         setupRecyclerView()
         setupSearchAndFilter()
         setupToggleAndGraph(view)
+        loadEntities()
     }
 
     override fun onResume() {
         super.onResume()
-        // Refresh data
-        adapter.updateData(com.garuda.floatingbubble.data.MockRepository.getEntities())
-        val wvGraph = view?.findViewById<android.webkit.WebView>(R.id.wvGraph)
-        if (wvGraph != null && wvGraph.visibility == View.VISIBLE) {
-            injectGraphData(wvGraph)
+        loadEntities()
+    }
+
+    private fun loadEntities() {
+        val view = view ?: return
+        val pbLoading = view.findViewById<ProgressBar?>(R.id.pbDatabaseLoading)
+        pbLoading?.visibility = View.VISIBLE
+
+        val token = SessionManager.bearerToken(requireContext())
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = ApiConfig.apiService.getEntities(token = token, limit = 200)
+                withContext(Dispatchers.Main) {
+                    pbLoading?.visibility = View.GONE
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        allEntities = response.body()?.data?.items ?: emptyList()
+                        adapter.updateData(allEntities)
+                        // Refresh graph if visible
+                        val wvGraph = view?.findViewById<android.webkit.WebView>(R.id.wvGraph)
+                        if (wvGraph != null && wvGraph.visibility == View.VISIBLE) {
+                            loadGraphData(wvGraph)
+                        }
+                    } else {
+                        Toast.makeText(requireContext(), "Gagal memuat database", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    pbLoading?.visibility = View.GONE
+                    Toast.makeText(requireContext(), "Tidak dapat terhubung ke server", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
     private fun setupRecyclerView() {
-        val data = com.garuda.floatingbubble.data.MockRepository.getEntities()
-        adapter = EntityAdapter(data)
+        adapter = EntityAdapter(emptyList())
         rvDatabase.layoutManager = LinearLayoutManager(requireContext())
         rvDatabase.adapter = adapter
     }
@@ -75,7 +116,7 @@ class DatabaseFragment : Fragment() {
         })
 
         val buttons = listOf(btnFilterAll, btnFilterPhone, btnFilterBank, btnFilterUrl, btnFilterEmail)
-        
+
         fun selectButton(selectedBtn: android.widget.TextView, type: String?) {
             currentType = type
             buttons.forEach { it.isSelected = (it == selectedBtn) }
@@ -88,7 +129,6 @@ class DatabaseFragment : Fragment() {
         btnFilterUrl.setOnClickListener { selectButton(btnFilterUrl, "url") }
         btnFilterEmail.setOnClickListener { selectButton(btnFilterEmail, "email") }
 
-        // Set default selection
         selectButton(btnFilterAll, null)
     }
 
@@ -120,37 +160,52 @@ class DatabaseFragment : Fragment() {
             wvGraph.visibility = View.VISIBLE
             svFilterGroup.visibility = View.GONE
             etSearchDatabase.visibility = View.GONE
+            loadGraphData(wvGraph)
         }
 
         wvGraph.webViewClient = object : android.webkit.WebViewClient() {
             override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                injectGraphData(wvGraph)
+                loadGraphData(wvGraph)
             }
         }
         wvGraph.loadUrl("file:///android_asset/graph.html")
     }
 
-    private fun injectGraphData(webView: android.webkit.WebView) {
-        val entities = com.garuda.floatingbubble.data.MockRepository.getEntities()
-        val relations = com.garuda.floatingbubble.data.MockRepository.getRelations()
+    private fun loadGraphData(webView: android.webkit.WebView) {
+        val token = SessionManager.bearerToken(requireContext())
 
-        val nodesList = mutableListOf<String>()
-        for (entity in entities) {
-            val color = when(entity.type) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = ApiConfig.apiService.getGraph(token)
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        val graphData = response.body()?.data
+                        injectGraphData(webView, graphData?.nodes ?: emptyList(), graphData?.edges ?: emptyList())
+                    }
+                }
+            } catch (e: Exception) {
+                // Graph data unavailable — silently skip
+            }
+        }
+    }
+
+    private fun injectGraphData(webView: android.webkit.WebView, nodes: List<GraphNode>, edges: List<GraphEdge>) {
+        val nodesList = nodes.map { node ->
+            val color = when (node.type) {
                 "phone" -> "#F4A261"
                 "bank_account" -> "#E36954"
                 "email" -> "#2A9D8F"
                 "url" -> "#E63946"
                 else -> "#88A8DADC"
             }
-            nodesList.add("{\"id\": \"${entity.id}\", \"label\": \"${entity.id}\", \"type\": \"${entity.type}\", \"color\": \"$color\"}")
+            // Use node.id (numeric string) as identifier but display node.value
+            "{\"id\": \"${node.id}\", \"label\": \"${node.value.replace("\"", "\\\"")}\", \"type\": \"${node.type}\", \"color\": \"$color\"}"
         }
         val nodesJson = "[${nodesList.joinToString(",")}]"
 
-        val edgesList = mutableListOf<String>()
-        for (relation in relations) {
-            edgesList.add("{\"from\": \"${relation.sourceId}\", \"to\": \"${relation.targetId}\"}")
+        val edgesList = edges.map { edge ->
+            "{\"from\": \"${edge.sourceId}\", \"to\": \"${edge.targetId}\"}"
         }
         val edgesJson = "[${edgesList.joinToString(",")}]"
 

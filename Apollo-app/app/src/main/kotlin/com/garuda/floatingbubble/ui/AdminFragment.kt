@@ -1,14 +1,17 @@
 package com.garuda.floatingbubble.ui
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.garuda.floatingbubble.R
+import com.garuda.floatingbubble.data.AdminReportItem
 import com.garuda.floatingbubble.data.ApiConfig
 import com.garuda.floatingbubble.data.ReviewRequest
 import com.garuda.floatingbubble.data.SessionManager
@@ -17,31 +20,32 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AdminDashboardActivity : AppCompatActivity() {
+class AdminFragment : Fragment() {
 
-    private lateinit var adapter: AdminReportAdapter
     private lateinit var tvPendingCount: TextView
     private lateinit var tvVerifiedCount: TextView
     private lateinit var rvAdminReports: RecyclerView
     private lateinit var pbLoading: ProgressBar
+    private lateinit var adapter: AdminReportAdapter
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_admin_dashboard)
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        return inflater.inflate(R.layout.activity_admin_dashboard, container, false)
+    }
 
-        tvPendingCount = findViewById(R.id.tvPendingCount)
-        tvVerifiedCount = findViewById(R.id.tvVerifiedCount)
-        rvAdminReports = findViewById(R.id.rvAdminReports)
-        pbLoading = findViewById(R.id.pbAdminLoading)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
 
-        findViewById<TextView>(R.id.btnExitAdmin).setOnClickListener {
-            SessionManager.clearSession(this)
-            startActivity(
-                android.content.Intent(this, com.garuda.floatingbubble.auth.LoginActivity::class.java)
-                    .apply { flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK }
-            )
-            finish()
-        }
+        tvPendingCount = view.findViewById(R.id.tvPendingCount)
+        tvVerifiedCount = view.findViewById(R.id.tvVerifiedCount)
+        rvAdminReports = view.findViewById(R.id.rvAdminReports)
+        pbLoading = view.findViewById<ProgressBar?>(R.id.pbAdminLoading)
+            ?: ProgressBar(requireContext())
+
+        // Hide the exit button when used as a fragment
+        view.findViewById<TextView?>(R.id.btnExitAdmin)?.visibility = View.GONE
 
         adapter = AdminReportAdapter(
             emptyList(),
@@ -49,8 +53,11 @@ class AdminDashboardActivity : AppCompatActivity() {
             onReject = { reportId -> rejectReport(reportId) }
         )
 
-        rvAdminReports.layoutManager = LinearLayoutManager(this)
+        rvAdminReports.layoutManager = LinearLayoutManager(requireContext())
         rvAdminReports.adapter = adapter
+
+        loadDashboard()
+        loadPendingReports()
     }
 
     override fun onResume() {
@@ -60,7 +67,7 @@ class AdminDashboardActivity : AppCompatActivity() {
     }
 
     private fun loadDashboard() {
-        val token = SessionManager.bearerToken(this)
+        val token = SessionManager.bearerToken(requireContext())
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = ApiConfig.apiService.getAdminDashboard(token)
@@ -71,13 +78,16 @@ class AdminDashboardActivity : AppCompatActivity() {
                         tvVerifiedCount.text = (stats?.byStatus?.verified ?: 0).toString()
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                // Dashboard stats not critical, skip silently
+            }
         }
     }
 
     private fun loadPendingReports() {
+        val token = SessionManager.bearerToken(requireContext())
         pbLoading.visibility = View.VISIBLE
-        val token = SessionManager.bearerToken(this)
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = ApiConfig.apiService.getAdminReports(token, status = "pending")
@@ -87,20 +97,20 @@ class AdminDashboardActivity : AppCompatActivity() {
                         val items = response.body()?.data?.items ?: emptyList()
                         adapter.updateData(items)
                     } else {
-                        Toast.makeText(this@AdminDashboardActivity, "Gagal memuat laporan", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Gagal memuat laporan", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     pbLoading.visibility = View.GONE
-                    Toast.makeText(this@AdminDashboardActivity, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Tidak dapat terhubung ke server", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
     private fun verifyReport(reportId: Int) {
-        val token = SessionManager.bearerToken(this)
+        val token = SessionManager.bearerToken(requireContext())
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = ApiConfig.apiService.verifyReport(
@@ -110,23 +120,23 @@ class AdminDashboardActivity : AppCompatActivity() {
                 )
                 withContext(Dispatchers.Main) {
                     if (response.isSuccessful && response.body()?.success == true) {
-                        Toast.makeText(this@AdminDashboardActivity, "Laporan $reportId diverifikasi", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Laporan $reportId berhasil diverifikasi", Toast.LENGTH_SHORT).show()
                         loadDashboard()
                         loadPendingReports()
                     } else {
-                        Toast.makeText(this@AdminDashboardActivity, "Gagal verifikasi: ${response.body()?.message ?: ""}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Gagal verifikasi: ${response.body()?.message ?: ""}", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AdminDashboardActivity, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
     private fun rejectReport(reportId: Int) {
-        val token = SessionManager.bearerToken(this)
+        val token = SessionManager.bearerToken(requireContext())
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = ApiConfig.apiService.rejectReport(
@@ -136,16 +146,16 @@ class AdminDashboardActivity : AppCompatActivity() {
                 )
                 withContext(Dispatchers.Main) {
                     if (response.isSuccessful && response.body()?.success == true) {
-                        Toast.makeText(this@AdminDashboardActivity, "Laporan $reportId ditolak", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Laporan $reportId ditolak", Toast.LENGTH_SHORT).show()
                         loadDashboard()
                         loadPendingReports()
                     } else {
-                        Toast.makeText(this@AdminDashboardActivity, "Gagal tolak: ${response.body()?.message ?: ""}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Gagal tolak: ${response.body()?.message ?: ""}", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AdminDashboardActivity, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }

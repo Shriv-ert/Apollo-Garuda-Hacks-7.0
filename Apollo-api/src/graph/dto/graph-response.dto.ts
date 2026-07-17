@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GraphNodeDto {
-  @ApiProperty({ example: 'clx123' })
+  @ApiProperty({ example: '1' })
   id: string;
 
   @ApiProperty({ example: 'phone' })
@@ -9,6 +9,9 @@ export class GraphNodeDto {
 
   @ApiProperty({ example: '08123456789' })
   value: string;
+
+  @ApiProperty({ example: 'Pinjol Ilegal', required: false })
+  category?: string;
 
   @ApiProperty({ example: 'scammer' })
   status: string;
@@ -21,10 +24,10 @@ export class GraphNodeDto {
 }
 
 export class GraphEdgeDto {
-  @ApiProperty({ example: 'clx123' })
+  @ApiProperty({ example: '1' })
   source_id: string;
 
-  @ApiProperty({ example: 'clx456' })
+  @ApiProperty({ example: '2' })
   target_id: string;
 
   @ApiProperty({ example: 'terkait_laporan_sama' })

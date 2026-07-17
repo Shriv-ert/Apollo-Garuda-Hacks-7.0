@@ -9,10 +9,19 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.garuda.floatingbubble.R
+import com.garuda.floatingbubble.data.ApiConfig
+import com.garuda.floatingbubble.data.EntityInput
+import com.garuda.floatingbubble.data.SessionManager
+import com.garuda.floatingbubble.data.SubmitReportRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ReportFragment : Fragment() {
 
@@ -25,8 +34,10 @@ class ReportFragment : Fragment() {
     private lateinit var btnUploadProof: LinearLayout
     private lateinit var ivProofPreview: ImageView
     private lateinit var btnSubmitReport: Button
+    private lateinit var pbLoading: ProgressBar
 
-    private var mockProofUrl: String? = null
+    // For now: proof image is a placeholder URL (real upload endpoint not yet available)
+    private var proofImageUrl: String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -47,13 +58,13 @@ class ReportFragment : Fragment() {
         btnUploadProof = view.findViewById(R.id.btnUploadProof)
         ivProofPreview = view.findViewById(R.id.ivProofPreview)
         btnSubmitReport = view.findViewById(R.id.btnSubmitReport)
+        pbLoading = view.findViewById(R.id.pbLoading)
 
         setupSpinners()
         setupListeners()
     }
 
     private fun setupSpinners() {
-
         val categories = arrayOf(
             "Pinjol Ilegal",
             "Penipuan Online",
@@ -61,22 +72,20 @@ class ReportFragment : Fragment() {
             "Investasi Bodong",
             "Lainnya"
         )
-        val categoryAdapter = ArrayAdapter(
+        spinnerCategory.adapter = ArrayAdapter(
             requireContext(),
             android.R.layout.simple_spinner_dropdown_item,
             categories
         )
-        spinnerCategory.adapter = categoryAdapter
     }
 
     private fun setupListeners() {
         btnUploadProof.setOnClickListener {
-            // Mocking proof upload
-            mockProofUrl = "https://mock-image-server.com/bukti.jpg"
+            // Placeholder: In production, open file picker or camera
+            proofImageUrl = "https://placeholder.awam.id/bukti_${System.currentTimeMillis()}.jpg"
             ivProofPreview.visibility = View.VISIBLE
-            // Use a solid color or a placeholder icon to simulate image loading
             ivProofPreview.setBackgroundColor(resources.getColor(R.color.awam_text_light, null))
-            Toast.makeText(requireContext(), "Bukti berhasil diunggah (Mock)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Bukti diunggah (placeholder)", Toast.LENGTH_SHORT).show()
         }
 
         btnSubmitReport.setOnClickListener {
@@ -101,32 +110,69 @@ class ReportFragment : Fragment() {
             return
         }
 
-        if (mockProofUrl == null) {
+        if (proofImageUrl == null) {
             Toast.makeText(requireContext(), "Harap unggah bukti tangkapan layar", Toast.LENGTH_SHORT).show()
             return
         }
 
         val category = spinnerCategory.selectedItem.toString()
 
-        val filledEntities = mutableListOf<Pair<String, String>>()
-        if (phone.isNotEmpty()) filledEntities.add(Pair("phone", phone))
-        if (bank.isNotEmpty()) filledEntities.add(Pair("bank_account", bank))
-        if (url.isNotEmpty()) filledEntities.add(Pair("url", url))
-        if (email.isNotEmpty()) filledEntities.add(Pair("email", email))
+        // Build entities list matching backend DTO shape
+        val entities = mutableListOf<EntityInput>()
+        if (phone.isNotEmpty()) entities.add(EntityInput(entityValue = phone, entityType = "phone"))
+        if (bank.isNotEmpty()) entities.add(EntityInput(entityValue = bank, entityType = "bank_account"))
+        if (url.isNotEmpty()) entities.add(EntityInput(entityValue = url, entityType = "url"))
+        if (email.isNotEmpty()) entities.add(EntityInput(entityValue = email, entityType = "email"))
 
-        // Simpan ke MockRepository secara lokal
-        com.garuda.floatingbubble.data.MockRepository.addReport(filledEntities, category, description)
+        val token = SessionManager.bearerToken(requireContext())
 
-        Toast.makeText(requireContext(), "Berhasil mengirim ${filledEntities.size} laporan secara bersamaan!", Toast.LENGTH_LONG).show()
-        
-        // Reset form
+        btnSubmitReport.isEnabled = false
+        pbLoading.visibility = View.VISIBLE
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = ApiConfig.apiService.submitReport(
+                    token = token,
+                    request = SubmitReportRequest(
+                        entities = entities,
+                        category = category,
+                        description = description,
+                        proofImage = proofImageUrl!!
+                    )
+                )
+                withContext(Dispatchers.Main) {
+                    pbLoading.visibility = View.GONE
+                    btnSubmitReport.isEnabled = true
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        Toast.makeText(
+                            requireContext(),
+                            "Berhasil mengirim ${entities.size} laporan! Menunggu verifikasi.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        resetForm()
+                    } else {
+                        val msg = response.body()?.message ?: "Gagal mengirim laporan"
+                        Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    pbLoading.visibility = View.GONE
+                    btnSubmitReport.isEnabled = true
+                    Toast.makeText(requireContext(), "Gagal terhubung: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun resetForm() {
         etPhone.text.clear()
         etBank.text.clear()
         etUrl.text.clear()
         etEmail.text.clear()
         etDescription.text.clear()
         ivProofPreview.visibility = View.GONE
-        mockProofUrl = null
+        proofImageUrl = null
         spinnerCategory.setSelection(0)
     }
 }

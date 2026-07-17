@@ -15,8 +15,9 @@
         android:label="Floating Bubble"
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
-        android:theme="@style/Theme.FloatingBubble">
-        
+        android:theme="@style/Theme.FloatingBubble"
+        android:usesCleartextTraffic="true">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -26,23 +27,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
+
         <activity
             android:name=".auth.LoginActivity"
             android:exported="false"
             android:theme="@style/Theme.FloatingBubble" />
-            
+
         <activity
             android:name=".auth.RegisterActivity"
             android:exported="false" />
+
         <activity
             android:name=".ui.HistoryActivity"
             android:exported="false"
             android:theme="@style/Theme.FloatingBubble" />
+
         <activity
             android:name=".ui.PermissionActivity"
             android:exported="false"
             android:theme="@style/Theme.FloatingBubble" />
+
         <activity
             android:name=".ui.AdminDashboardActivity"
             android:exported="false"
@@ -54,6 +58,6 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
-            
+
     </application>
 </manifest>

@@ -1,8 +1,31 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+export class EntityResponseDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: 'phone' })
+  type: string;
+
+  @ApiProperty({ example: '08999888777' })
+  value: string;
+
+  @ApiProperty({ example: 'Pinjol Ilegal' })
+  category?: string;
+
+  @ApiProperty({ example: 'unknown' })
+  status: string;
+
+  @ApiProperty({ example: 45 })
+  risk_score: number;
+
+  @ApiProperty({ example: 0 })
+  report_count?: number;
+}
+
 export class ReportResponseDto {
-  @ApiProperty({ example: 'clx12345678' })
-  id: string;
+  @ApiProperty({ example: 1 })
+  id: number;
 
   @ApiProperty({ example: 'pending' })
   status: string;
@@ -22,12 +45,9 @@ export class ReportResponseDto {
   @ApiProperty()
   created_at: Date;
 
-  @ApiProperty()
-  entity: {
-    id: string;
-    type: string;
-    value: string;
-    status: string;
-    risk_score: number;
-  };
+  @ApiProperty({ type: [EntityResponseDto] })
+  entities: EntityResponseDto[];
+
+  @ApiProperty({ type: EntityResponseDto, required: false })
+  entity?: EntityResponseDto;
 }

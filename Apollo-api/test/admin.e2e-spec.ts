@@ -90,15 +90,17 @@ describe('AdminController (e2e)', () => {
       .expect(201);
     testReportId1 = repRes1.body.data.id;
 
-    // 4. Submit Report 2 (Different entity by same victim for graph relation test)
+    // 4. Submit Report 2 (Multi-entity report to test intra-report graph edge generation)
     const repRes2 = await request(app.getHttpServer())
       .post('/api/v1/report')
       .set('Authorization', `Bearer ${regularToken}`)
       .send({
-        entity_value: '1122334455',
-        entity_type: 'bank_account',
+        entities: [
+          { entity_value: '1122334455', entity_type: 'bank_account' },
+          { entity_value: '08555999888', entity_type: 'phone' },
+        ],
         category: 'Penipuan Rekening',
-        description: 'Nomor rekening penampung dari pelaku yang sama.',
+        description: 'Nomor rekening penampung dan nomor kontak penipu dari transaksi yang sama.',
         proof_image: 'https://example.com/bukti2.jpg',
       })
       .expect(201);
@@ -164,21 +166,22 @@ describe('AdminController (e2e)', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.status).toBe('verified');
-      expect(response.body.data.entity.status).toBe('scammer');
-      expect(response.body.data.entity.report_count).toBe(1);
+      expect(response.body.data.entities[0].status).toBe('scammer');
+      expect(response.body.data.entities[0].report_count).toBe(1);
     });
 
-    it('7A & 6C. Admin Verifikasi Laporan 2 (Otomatis Menghubungkan Graf Edge)', async () => {
+    it('7A & 6C. Admin Verifikasi Laporan 2 (Otomatis Menghubungkan Graf Edge Intra-Report)', async () => {
       const response = await request(app.getHttpServer())
         .put(`/api/v1/admin/reports/${testReportId2}/verify`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          review_note: 'Rekening terbukti terkait dengan laporan pertama.',
+          review_note: 'Rekening dan nomor telepon terbukti terkait dalam satu transaksi penipuan.',
         })
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.status).toBe('verified');
+      expect(response.body.data.entities.length).toBe(2);
     });
   });
 });

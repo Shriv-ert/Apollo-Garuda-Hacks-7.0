@@ -23,6 +23,24 @@ describe('CheckController (e2e)', () => {
       }
       return [];
     }),
+    extractEntitiesFromText: jest.fn().mockImplementation(async (text: string) => {
+      if (text.includes('asdfghjkl')) {
+        return [];
+      }
+      if (text.includes('021-1500-888')) {
+        return ['021-1500-888'];
+      }
+      if (text.includes('812 3456 789') || text.includes('08123456789')) {
+        if (text.includes('danakilat.xyz')) {
+          return ['danakilat.xyz', '08123456789'];
+        }
+        return ['+62 812 3456 789'];
+      }
+      if (text.includes('pinjamcepat.xyz')) {
+        return ['https://pinjamcepat.xyz/'];
+      }
+      return [text];
+    }),
   };
 
   beforeAll(async () => {
@@ -72,8 +90,6 @@ describe('CheckController (e2e)', () => {
         .send({ value: '021-1500-888' })
         .expect(200);
 
-      console.log('--- 3A Response ---', JSON.stringify(response.body, null, 2));
-
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Pemeriksaan selesai');
       expect(response.body.data.verdict).toBe('AMAN');
@@ -89,8 +105,6 @@ describe('CheckController (e2e)', () => {
         .send({ value: '+62 812 3456 789' })
         .expect(200);
 
-      //console.log('--- 3B Response ---', JSON.stringify(response.body, null, 2));
-
       expect(response.body.success).toBe(true);
       expect(response.body.data.verdict).toBe('BAHAYA PENIPUAN');
       expect(response.body.data.status).toBe('scammer');
@@ -104,13 +118,26 @@ describe('CheckController (e2e)', () => {
         .send({ value: 'https://pinjamcepat.xyz/' })
         .expect(200);
 
-      //console.log('--- 3C Response ---', JSON.stringify(response.body, null, 2));
-
       expect(response.body.success).toBe(true);
       expect(response.body.data.verdict).toBe('WASPADA');
       expect(response.body.data.status).toBe('unknown');
       expect(response.body.data.risk_score).toBe(45);
       expect(response.body.data.confidence_score).toBe(40);
+    });
+
+    it('3C-2. Scan via Teks Narasi / Paste Paragraf Pesan (AI Text Extraction)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/check')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          value: 'Tolong waspada penipuan pinjol dari nomor 08123456789 dan website http://danakilat.xyz',
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.verdict).toBe('BAHAYA PENIPUAN');
+      expect(response.body.data.entity_value).toBe('danakilat.xyz');
+      expect(response.body.data.risk_score).toBe(100);
     });
 
     it('8B. Input Entitas Format Tidak Valid', async () => {
@@ -119,8 +146,6 @@ describe('CheckController (e2e)', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .send({ value: 'asdfghjkl' })
         .expect(400);
-
-      //console.log('--- 8B Response ---', JSON.stringify(response.body, null, 2));
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toContain('Format entitas tidak dikenali');
@@ -136,8 +161,6 @@ describe('CheckController (e2e)', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .attach('image', dummyBuffer, 'screenshot.jpg')
         .expect(200);
-
-      //console.log('--- 3D Response ---', JSON.stringify(response.body, null, 2));
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Pemeriksaan gambar selesai');
@@ -155,8 +178,6 @@ describe('CheckController (e2e)', () => {
         .attach('image', dummyBuffer, 'screenshot.jpg')
         .expect(200);
 
-      console.log('--- 3E Response ---', JSON.stringify(response.body, null, 2));
-
       expect(response.body.success).toBe(true);
       expect(response.body.data.summary.entity_value).toBe('danakilat.xyz');
       expect(response.body.data.summary.risk_score).toBe(100);
@@ -172,8 +193,6 @@ describe('CheckController (e2e)', () => {
         .attach('image', dummyBuffer, 'blur.jpg')
         .expect(422);
 
-      //console.log('--- 3D Blur Response ---', JSON.stringify(response.body, null, 2));
-
       expect(response.body.success).toBe(false);
       expect(response.body.message).toContain('Tidak dapat mendeteksi entitas');
     });
@@ -186,8 +205,6 @@ describe('CheckController (e2e)', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .attach('image', largeBuffer, 'huge.jpg')
         .expect(413);
-
-      console.log('--- 8C Response ---', JSON.stringify(response.body, null, 2));
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toContain('Ukuran file terlalu besar');
@@ -203,8 +220,6 @@ describe('CheckController (e2e)', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .attach('image', dummyBuffer, 'screenshot.jpg')
         .expect(503);
-
-      //console.log('--- 503 LLM Disabled Response ---', JSON.stringify(response.body, null, 2));
 
       expect(response.body.success).toBe(false);
       expect(response.body.message).toContain('Fitur pindai gambar belum tersedia');

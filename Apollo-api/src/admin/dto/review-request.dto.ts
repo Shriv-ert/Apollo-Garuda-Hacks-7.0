@@ -1,10 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class ReviewRequestDto {
-  @ApiProperty({ example: 'Bukti screenshot terbukti valid dan sesuai dengan laporan penipuan' })
-  @IsNotEmpty({ message: 'Catatan peninjauan wajib diisi' })
+  @ApiPropertyOptional({ example: 'Bukti terverifikasi oleh admin' })
+  @IsOptional()
   @IsString()
-  @MinLength(5, { message: 'Catatan peninjauan minimal 5 karakter' })
-  review_note: string;
+  review_note?: string;
 }

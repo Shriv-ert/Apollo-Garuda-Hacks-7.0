@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { EXTRACT_PROMPT } from './llm.constants';
+import { EXTRACT_PROMPT, EXTRACT_TEXT_PROMPT } from './llm.constants';
 
 @Injectable()
 export class LlmService {
@@ -62,8 +62,30 @@ export class LlmService {
     });
 
     const rawText = response.choices[0]?.message?.content?.trim() || '[]';
-    const cleanedText = this.stripMarkdownFence(rawText);
+    return this.parseJsonResponse(rawText);
+  }
 
+  async extractEntitiesFromText(text: string): Promise<string[]> {
+    if (!this.openai) {
+      throw new Error('LLM service is not enabled');
+    }
+
+    const response = await this.openai.chat.completions.create({
+      model: this.modelName,
+      messages: [
+        {
+          role: 'user',
+          content: `${EXTRACT_TEXT_PROMPT}\n\nTeks yang akan diproses:\n${text}`,
+        },
+      ],
+    });
+
+    const rawText = response.choices[0]?.message?.content?.trim() || '[]';
+    return this.parseJsonResponse(rawText);
+  }
+
+  private parseJsonResponse(rawText: string): string[] {
+    const cleanedText = this.stripMarkdownFence(rawText);
     try {
       const parsed = JSON.parse(cleanedText);
       if (Array.isArray(parsed)) {

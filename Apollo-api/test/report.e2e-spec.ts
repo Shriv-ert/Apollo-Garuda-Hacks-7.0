@@ -70,7 +70,7 @@ describe('ReportController (e2e)', () => {
   });
 
   describe('Journey 4: Submit Report', () => {
-    it('4A. Kirim Laporan Lengkap (Happy Path)', async () => {
+    it('4A. Kirim Laporan Lengkap (Single Entity Legacy)', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/report')
         .set('Authorization', `Bearer ${userToken1}`)
@@ -86,9 +86,31 @@ describe('ReportController (e2e)', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('Laporan berhasil dikirim');
       expect(response.body.data.status).toBe('pending');
-      expect(response.body.data.entity.entity_value || response.body.data.entity.value).toBe('08999888777');
+      expect(response.body.data.entities.length).toBe(1);
+      expect(response.body.data.entities[0].value).toBe('08999888777');
 
       createdReportId = response.body.data.id;
+    });
+
+    it('4B. Kirim Laporan dengan Banyak Entitas Sekaligus (Multi Entity)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/report')
+        .set('Authorization', `Bearer ${userToken1}`)
+        .send({
+          entities: [
+            { entity_value: '081122334455', entity_type: 'phone' },
+            { entity_value: 'BCA 9988776655', entity_type: 'bank_account' },
+            { entity_value: 'http://penipu.xyz', entity_type: 'url' },
+          ],
+          category: 'Penipuan Online',
+          description: 'Pelaku meminta transfer ke rekening BCA setelah kontak via WA dan kirim link phising.',
+          proof_image: 'https://example.com/proof_multi.jpg',
+        })
+        .expect(201);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.status).toBe('pending');
+      expect(response.body.data.entities.length).toBe(3);
     });
 
     it('4D Error: Kirim Laporan Tanpa Bukti Tangkapan Layar (Bad Request)', async () => {

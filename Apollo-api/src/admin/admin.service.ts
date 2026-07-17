@@ -30,7 +30,9 @@ export class AdminService {
               fullName: true,
             },
           },
-          entity: true,
+          reportEntities: {
+            include: { entity: true },
+          },
         },
       }),
       this.prisma.report.count({ where }),
@@ -59,7 +61,9 @@ export class AdminService {
             fullName: true,
           },
         },
-        entity: true,
+        reportEntities: {
+          include: { entity: true },
+        },
       },
     });
 
@@ -90,7 +94,9 @@ export class AdminService {
       },
       include: {
         user: { select: { id: true, email: true, fullName: true } },
-        entity: true,
+        reportEntities: {
+          include: { entity: true },
+        },
       },
     });
 
@@ -103,6 +109,9 @@ export class AdminService {
 
     const report = await this.prisma.report.findUnique({
       where: { id: rId },
+      include: {
+        reportEntities: true,
+      },
     });
 
     if (!report) {
@@ -111,7 +120,7 @@ export class AdminService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Update report status to verified
-      const updatedReport = await tx.report.update({
+      await tx.report.update({
         where: { id: rId },
         data: {
           status: 'verified',
@@ -119,24 +128,28 @@ export class AdminService {
           reviewNote: dto.review_note,
           reviewedAt: new Date(),
         },
-        include: {
-          user: { select: { id: true, email: true, fullName: true } },
-          entity: true,
-        },
       });
 
-      // 2. Recompute entity scores & status
-      await this.recomputeEntity(tx, updatedReport.entityId);
+      // 2. Recompute entity scores & status for all entities in this report
+      const reportEntities = await tx.reportEntity.findMany({
+        where: { reportId: rId },
+      });
 
-      // 3. Link graph relations for verified entities by same user
-      await this.linkRelations(tx, updatedReport.userId, updatedReport.entityId);
+      for (const re of reportEntities) {
+        await this.recomputeEntity(tx, re.entityId);
+      }
 
-      // Fetch fresh updated report with updated entity
+      // 3. Link graph relations intra-report (link all entities in this report together)
+      await this.linkRelationsIntraReport(tx, rId);
+
+      // Fetch fresh updated report
       return tx.report.findUnique({
         where: { id: rId },
         include: {
           user: { select: { id: true, email: true, fullName: true } },
-          entity: true,
+          reportEntities: {
+            include: { entity: true },
+          },
         },
       });
     });
@@ -166,7 +179,9 @@ export class AdminService {
       },
       include: {
         user: { select: { id: true, email: true, fullName: true } },
-        entity: true,
+        reportEntities: {
+          include: { entity: true },
+        },
       },
     });
 
@@ -208,10 +223,10 @@ export class AdminService {
   }
 
   private async recomputeEntity(tx: any, entityId: number) {
-    const verifiedCount = await tx.report.count({
+    const verifiedCount = await tx.reportEntity.count({
       where: {
         entityId,
-        status: 'verified',
+        report: { status: 'verified' },
       },
     });
 
@@ -240,39 +255,53 @@ export class AdminService {
     });
   }
 
-  private async linkRelations(tx: any, userId: number, targetEntityId: number) {
-    const otherVerifiedReports = await tx.report.findMany({
-      where: {
-        userId,
-        status: 'verified',
-        entityId: { not: targetEntityId },
-      },
+  private async linkRelationsIntraReport(tx: any, reportId: number) {
+    const reportEntities = await tx.reportEntity.findMany({
+      where: { reportId },
       select: { entityId: true },
     });
 
-    for (const other of otherVerifiedReports) {
-      const existing = await tx.entityRelation.findFirst({
-        where: {
-          OR: [
-            { sourceId: targetEntityId, targetId: other.entityId },
-            { sourceId: other.entityId, targetId: targetEntityId },
-          ],
-        },
-      });
+    const entityIds = reportEntities.map((re: any) => re.entityId);
 
-      if (!existing) {
-        await tx.entityRelation.create({
-          data: {
-            sourceId: targetEntityId,
-            targetId: other.entityId,
-            relationType: 'terkait_laporan_sama',
+    for (let i = 0; i < entityIds.length; i++) {
+      for (let j = i + 1; j < entityIds.length; j++) {
+        const sourceId = entityIds[i];
+        const targetId = entityIds[j];
+
+        const existing = await tx.entityRelation.findFirst({
+          where: {
+            OR: [
+              { sourceId, targetId },
+              { sourceId: targetId, targetId: sourceId },
+            ],
           },
         });
+
+        if (!existing) {
+          await tx.entityRelation.create({
+            data: {
+              sourceId,
+              targetId,
+              relationType: 'terkait_laporan_sama',
+            },
+          });
+        }
       }
     }
   }
 
   private mapAdminReportResponse(report: any) {
+    const entitiesList = (report.reportEntities || []).map((re: any) => ({
+      id: re.entity.id,
+      type: re.entity.type,
+      value: re.entity.value,
+      category: re.entity.category || report.category,
+      status: re.entity.status,
+      risk_score: re.entity.riskScore,
+      confidence_score: re.entity.confidenceScore,
+      report_count: re.entity.reportCount,
+    }));
+
     return {
       id: report.id,
       status: report.status,
@@ -289,15 +318,8 @@ export class AdminService {
             full_name: report.user.fullName,
           }
         : undefined,
-      entity: {
-        id: report.entity.id,
-        type: report.entity.type,
-        value: report.entity.value,
-        status: report.entity.status,
-        risk_score: report.entity.riskScore,
-        confidence_score: report.entity.confidenceScore,
-        report_count: report.entity.reportCount,
-      },
+      entities: entitiesList,
+      entity: entitiesList.length > 0 ? entitiesList[0] : undefined,
     };
   }
 }

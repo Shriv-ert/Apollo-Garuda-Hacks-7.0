@@ -351,7 +351,14 @@ async function main() {
 
       // Cek apakah report sudah ada
       const existingReport = await prisma.report.findFirst({
-        where: { userId: reporterUser.id, entityId: entity.id },
+        where: { 
+          userId: reporterUser.id, 
+          reportEntities: {
+            some: {
+              entityId: entity.id
+            }
+          }
+        },
       });
 
       if (!existingReport) {
@@ -361,7 +368,6 @@ async function main() {
         await prisma.report.create({
           data: {
             userId: reporterUser.id,
-            entityId: entity.id,
             category,
             description,
             proofImage: `https://placehold.co/600x400?text=Bukti+${reportIndex + 1}`,
@@ -369,6 +375,11 @@ async function main() {
             reviewedById: reportStatus === 'verified' ? admin.id : null,
             reviewNote: reportStatus === 'verified' ? 'Laporan terverifikasi oleh admin setelah pengecekan bukti.' : null,
             reviewedAt: reportStatus === 'verified' ? new Date() : null,
+            reportEntities: {
+              create: {
+                entityId: entity.id
+              }
+            }
           },
         });
       }

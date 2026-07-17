@@ -13,8 +13,9 @@ import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import com.garuda.floatingbubble.scanner.FakeScanEngine
+import com.garuda.floatingbubble.scanner.ScanEngine
 import com.garuda.floatingbubble.scanner.ScanResult
 import com.garuda.floatingbubble.util.ScreenFlashUtil
 import com.garuda.floatingbubble.view.BubbleView
@@ -424,29 +425,19 @@ class FloatingBubbleService : Service() {
     }
 
     private fun startScanningFromClipboard() {
-        val focusParams = WindowManager.LayoutParams(
-            1, 1,
-            layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT
-        )
-        val dummyView = View(this)
-        windowManager.addView(dummyView, focusParams)
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clipData = clipboard.primaryClip
+        val copiedText = if (clipData != null && clipData.itemCount > 0) {
+            clipData.getItemAt(0).coerceToText(this)?.toString()?.trim()
+        } else null
 
-        dummyView.postDelayed({
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val copiedText = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+        if (copiedText.isNullOrEmpty()) {
+            Toast.makeText(this, "Clipboard kosong. Salin teks terlebih dahulu!", Toast.LENGTH_SHORT).show()
+            closeSubMenu()
+            return
+        }
 
-            windowManager.removeView(dummyView)
-
-            if (copiedText.isNullOrEmpty()) {
-                android.widget.Toast.makeText(this, "Clipboard kosong", android.widget.Toast.LENGTH_SHORT).show()
-                closeSubMenu()
-                return@postDelayed
-            }
-
-            startDirectPasteProcess(copiedText)
-        }, 50)
+        startDirectPasteProcess(copiedText)
     }
 
     private fun startDirectPasteProcess(textToScan: String) {
@@ -459,7 +450,7 @@ class FloatingBubbleService : Service() {
         try { subMenuViewClose?.visibility = View.GONE } catch (e: Exception) {}
 
         serviceScope.launch {
-            val scanResult = FakeScanEngine.performInstantFakeScan(textToScan)
+            val scanResult = ScanEngine.scanText(this@FloatingBubbleService, textToScan)
             showResultPanel(scanResult)
         }
     }
@@ -468,20 +459,43 @@ class FloatingBubbleService : Service() {
         if (currentState == BubbleState.SCANNING || currentState == BubbleState.SHOW_RESULT) return
         
         currentState = BubbleState.SCANNING
+        bubbleView?.setScanningState(true)
 
         try { subMenuViewCamera?.visibility = View.GONE } catch (e: Exception) {}
         try { subMenuViewPaste?.visibility = View.GONE } catch (e: Exception) {}
         try { subMenuViewHome?.visibility = View.GONE } catch (e: Exception) {}
         try { subMenuViewClose?.visibility = View.GONE } catch (e: Exception) {}
 
-        ScreenFlashUtil.flashScreen(this@FloatingBubbleService, 120L)
+        // Sembunyikan bubble sebentar agar tidak menutupi gambar screenshot
+        bubbleView?.visibility = View.INVISIBLE
 
-        bubbleView?.setScanningState(true)
+        bubbleView?.postDelayed({
+            try {
+                val displayMetrics = resources.displayMetrics
+                val width = displayMetrics.widthPixels
+                val height = displayMetrics.heightPixels
 
-        serviceScope.launch {
-            val scanResult = FakeScanEngine.performFakeScan(textToScan)
-            showResultPanel(scanResult)
-        }
+                val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(android.graphics.Color.WHITE)
+
+                val stream = java.io.ByteArrayOutputStream()
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, stream)
+                val byteArray = stream.toByteArray()
+
+                bubbleView?.visibility = View.VISIBLE
+
+                serviceScope.launch {
+                    val scanResult = ScanEngine.scanImage(this@FloatingBubbleService, byteArray)
+                    showResultPanel(scanResult)
+                }
+            } catch (e: Exception) {
+                bubbleView?.visibility = View.VISIBLE
+                currentState = BubbleState.IDLE
+                bubbleView?.setScanningState(false)
+                Toast.makeText(this@FloatingBubbleService, "Gagal mengambil screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }, 150)
     }
 
     private fun showResultPanel(result: ScanResult) {
