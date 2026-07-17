@@ -45,18 +45,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNav)
+        val fabReport = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.fabReport)
 
         if (savedInstanceState == null) {
             loadFragment(HomeFragment())
+            bottomNav.selectedItemId = R.id.nav_home
         }
 
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> loadFragment(HomeFragment())
                 R.id.nav_history -> loadFragment(HistoryFragment())
+                R.id.nav_database -> loadFragment(com.garuda.floatingbubble.ui.DatabaseFragment())
                 R.id.nav_settings -> loadFragment(SettingsFragment())
+                R.id.nav_placeholder -> return@setOnItemSelectedListener false // Do nothing if placeholder is clicked
             }
             true
+        }
+
+        fabReport.setOnClickListener {
+            // Uncheck other items or select placeholder
+            bottomNav.menu.findItem(R.id.nav_placeholder).isChecked = true
+            loadFragment(com.garuda.floatingbubble.ui.ReportFragment())
         }
     }
 

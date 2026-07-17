@@ -85,6 +85,11 @@ class SettingsFragment : Fragment() {
             requireActivity().finish()
         }
 
+        val btnAdminDashboard = view.findViewById<Button>(R.id.btnAdminDashboard)
+        btnAdminDashboard.setOnClickListener {
+            startActivity(Intent(requireContext(), AdminDashboardActivity::class.java))
+        }
+
         refreshUI()
     }
 

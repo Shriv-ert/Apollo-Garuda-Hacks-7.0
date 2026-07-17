@@ -16,7 +16,7 @@ class HistoryActivity : AppCompatActivity() {
         setContentView(R.layout.activity_history)
 
         val historyContainer = findViewById<LinearLayout>(R.id.historyContainer)
-        val historyList = HistoryManager.getHistory()
+        val historyList = com.garuda.floatingbubble.data.MockRepository.getReports()
 
         if (historyList.isEmpty()) {
             val emptyText = TextView(this).apply {
@@ -27,17 +27,20 @@ class HistoryActivity : AppCompatActivity() {
             }
             historyContainer.addView(emptyText)
         } else {
-            for (item in historyList) {
+            for (report in historyList) {
                 val itemView = LayoutInflater.from(this).inflate(R.layout.item_history, historyContainer, false)
                 
                 val tvHistoryTarget = itemView.findViewById<TextView>(R.id.tvHistoryTarget)
                 val tvHistoryVerdict = itemView.findViewById<TextView>(R.id.tvHistoryVerdict)
                 val tvHistoryText = itemView.findViewById<TextView>(R.id.tvHistoryText)
 
-                tvHistoryTarget.text = item.target
-                tvHistoryVerdict.text = "${item.verdictShort} (${item.riskScore}%)"
-                if (!item.scannedText.isNullOrEmpty()) {
-                    tvHistoryText.text = "Teks: ${item.scannedText}"
+                val entitiesStr = report.entities.joinToString(", ")
+                tvHistoryTarget.text = entitiesStr
+                tvHistoryVerdict.text = report.category
+                tvHistoryVerdict.setTextColor(resources.getColor(R.color.awam_safe, null))
+
+                if (report.description.isNotEmpty()) {
+                    tvHistoryText.text = "Teks: ${report.description}"
                     tvHistoryText.visibility = View.VISIBLE
                 } else {
                     tvHistoryText.visibility = View.GONE

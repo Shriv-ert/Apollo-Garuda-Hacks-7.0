@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Riwayat Scan"
+        android:text="Riwayat Laporan"
         android:textColor="@color/awam_surface"
         android:textSize="20sp"
         android:textStyle="bold"
