@@ -27,5 +27,4 @@ local.properties
 /Apollo-api/dist/
 /Apollo-api/coverage/
 /Apollo-api/.env
-/Apollo-api/.env.*
 
