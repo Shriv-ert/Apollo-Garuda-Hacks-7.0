@@ -21,3 +21,11 @@ local.properties
 
 # System files
 .DS_Store
+
+# NestJS (Apollo-api)
+/Apollo-api/node_modules/
+/Apollo-api/dist/
+/Apollo-api/coverage/
+/Apollo-api/.env
+/Apollo-api/.env.*
+
