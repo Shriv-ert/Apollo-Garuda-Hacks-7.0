@@ -125,29 +125,17 @@ export class CheckService {
       results.push(res);
     }
 
-    // If no entities detected by LLM (or LLM disabled), scan database for scammer entities
-    if (results.length === 0) {
-      const dbEntities = await this.prisma.entity.findMany({
-        take: 3,
-        orderBy: { reportCount: 'desc' },
-      });
-
-      for (const ent of dbEntities) {
-        const res = await this.evaluate(ent.type, ent.value);
-        results.push(res);
-      }
-    }
-
+    // If no entities detected by LLM (or LLM disabled)
     if (results.length === 0) {
       results.push({
-        entity_type: 'phone',
-        entity_value: '081234567890',
-        verdict: 'BAHAYA PENIPUAN',
-        status: 'scammer',
-        risk_score: 85,
-        confidence_score: 90,
-        report_count: 5,
-        reason: 'Nomor telepon 081234567890 terdeteksi dalam laporan indikasi penipuan.',
+        entity_type: 'unknown',
+        entity_value: 'Tidak Terdeteksi',
+        verdict: 'WASPADA',
+        status: 'unknown',
+        risk_score: 45,
+        confidence_score: 50,
+        report_count: 0,
+        reason: 'Tidak ditemukan nomor HP, rekening bank, atau link yang terdeteksi dalam gambar screenshot ini. Coba ambil ulang screenshot atau gunakan fitur Paste.',
       });
     }
 
